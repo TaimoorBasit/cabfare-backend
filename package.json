@@ -1,0 +1,29 @@
+{
+  "name": "cabfare-backend",
+  "version": "1.0.0",
+  "description": "Backend for CabFare Admin",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node dist/server.js",
+    "dev": "nodemon src/server.ts",
+    "build": "tsc",
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.11",
+    "bcryptjs": "^2.4.3",
+    "hono": "^4.12.31",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260721.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.14.9",
+    "nodemon": "^3.1.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.3",
+    "wrangler": "^4.112.0"
+  }
+}
