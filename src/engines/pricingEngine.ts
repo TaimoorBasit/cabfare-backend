@@ -275,15 +275,24 @@ export async function calculatePrice(input: PricingInput, env: any) {
     }
   }
 
-  return {
-    baseFare: Math.round(baseFare),
-    extraLiveMileageCharge: Math.round(extraLiveMileageCharge),
-    extraDeadMileageCharge: Math.round(extraDeadMileageCharge),
-    waitingCharge: Math.round(waitingCharge),
-    seasonalMultiplier,
-    surchargeTotal: Math.round(surchargeTotal),
-    surchargeLines,
-    finalFare: Math.round(finalFare),
-    isManualQuote
-  };
+    let upperBoundFare = finalFare;
+    if (isManualQuote) {
+        const roundedLower = Math.round(finalFare / 5) * 5;
+        const roundedUpper = Math.round((finalFare * 1.12) / 5) * 5;
+        finalFare = roundedLower;
+        upperBoundFare = roundedUpper;
+    }
+
+    return {
+      baseFare: Math.round(baseFare),
+      extraLiveMileageCharge: Math.round(extraLiveMileageCharge),
+      extraDeadMileageCharge: Math.round(extraDeadMileageCharge),
+      waitingCharge: Math.round(waitingCharge),
+      seasonalMultiplier,
+      surchargeTotal: Math.round(surchargeTotal),
+      surchargeLines,
+      finalFare: Math.round(finalFare),
+      upperBoundFare: Math.round(upperBoundFare),
+      isManualQuote
+    };
 }

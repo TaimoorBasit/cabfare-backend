@@ -63,8 +63,37 @@ export interface DatabaseSchema {
   waitingCharges: any[];
   vehicleAvailability: any[];
   routeCache: any[];
-  vehicles?: any[];
-  globalVars?: any;
+  vehicles?: {
+    id: string;
+    name: string;
+    capacity: number;
+    emoji?: string;
+    desc?: string;
+    ratePerKm?: number;
+    standingCostPerDay?: number;
+    commercialWeight?: number;
+    // legacy fields
+    fleetCount?: number;
+    utilisationDays?: number;
+    annualCosts?: any[];
+    fuelKpl?: number;
+    maintenanceCostPerKm?: number;
+    tyreSetCost?: number;
+    expectedTyreLifeKm?: number;
+    fuelPricePerLitre?: number;
+  }[];
+  globalVars?: {
+    driverWageWeekday?: number;
+    driverWageWeekend?: number;
+    driverWageHoliday?: number;
+    marginWeekday?: number;
+    marginWeekend?: number;
+    marginHoliday?: number;
+    overnightCost?: number;
+    yardAddress?: string;
+    yardLat?: number;
+    yardLng?: number;
+  };
   surcharges?: any;
   annualOverheads?: any[];
   blockedDates?: any[];
@@ -141,6 +170,7 @@ class DB {
   data: DatabaseSchema | null = null;
   adapter = new KVAdapter();
   env: any;
+  lastFetchTime = 0;
 
   constructor(env: any) {
     this.env = env;
@@ -148,11 +178,13 @@ class DB {
 
   async read() {
     this.data = await this.adapter.read(this.env);
+    this.lastFetchTime = Date.now();
   }
 
   async write() {
     if (this.data) {
       await this.adapter.write(this.data, this.env);
+      this.lastFetchTime = Date.now();
     }
   }
 }
@@ -179,7 +211,10 @@ export async function getDatabase(env: any): Promise<DB> {
   } else {
     // Keep it refreshed just in case but update env reference
     db.env = env;
-    await db.read();
+    // 30 seconds cache TTL
+    if (Date.now() - db.lastFetchTime > 30000) {
+      await db.read();
+    }
   }
   return db!;
 }

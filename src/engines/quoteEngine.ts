@@ -57,6 +57,7 @@ export async function generateQuotes(journey: any, env: any) {
         totalKm: Math.round(mileageResult.totalKm),
         revenueKm: Math.round(mileageResult.liveKm),
         finalPrice: pricingResult.finalFare * requiredVehicles,
+        upperBoundPrice: (pricingResult.upperBoundFare || pricingResult.finalFare) * requiredVehicles,
         subtotal: (pricingResult.baseFare + pricingResult.extraLiveMileageCharge + pricingResult.extraDeadMileageCharge + pricingResult.waitingCharge) * requiredVehicles,
         surchargeLines: pricingResult.surchargeLines.map(s => ({...s, cost: s.cost * requiredVehicles})),
         surchargeTotal: pricingResult.surchargeTotal * requiredVehicles,
