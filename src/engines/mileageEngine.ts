@@ -51,7 +51,9 @@ export async function calculateMileage(journey: any, env: any) {
   const liveWaypoints = livePoints.slice(1, -1);
 
   const isReturn = journey.journeyType === 'return';
-  const cacheKey = JSON.stringify({ liveOrigin, liveDestination, liveWaypoints, yardLoc, isReturn });
+  const distanceUnit = db.data?.globalVars?.distanceUnit || 'km';
+  const cacheWindow = Math.floor(Date.now() / 900000);
+  const cacheKey = JSON.stringify({ liveOrigin, liveDestination, liveWaypoints, yardLoc, isReturn, distanceUnit, cacheWindow });
   if (mileageCache.has(cacheKey)) {
     return await mileageCache.get(cacheKey);
   }
@@ -62,7 +64,6 @@ export async function calculateMileage(journey: any, env: any) {
     const liveDirections = await getDirections(liveOrigin, liveDestination, liveWaypoints, apiKey);
     let liveDistanceMeters = sumLegs(liveDirections.routes[0].legs, 'distance');
     let liveDurationSeconds = sumLegs(liveDirections.routes[0].legs, 'duration');
-    const distanceUnit = db.data?.globalVars?.distanceUnit || 'km';
     const divisor = distanceUnit === 'miles' ? 1609.34 : 1000;
 
     const deadOutDirections = await getDirections(yardLoc, liveOrigin, [], apiKey);
@@ -94,12 +95,21 @@ export async function calculateMileage(journey: any, env: any) {
     return result;
   } catch (error: any) {
     console.error("Mileage engine error:", error);
-    return fallbackCalculateMileage(journey);
+    throw new Error(`Unable to calculate the road route: ${error.message}`);
   }
   })();
 
   mileageCache.set(cacheKey, mileagePromise);
-  return await mileagePromise;
+  if (mileageCache.size > 200) {
+    const oldestKey = mileageCache.keys().next().value;
+    if (oldestKey) mileageCache.delete(oldestKey);
+  }
+  try {
+    return await mileagePromise;
+  } catch (error) {
+    mileageCache.delete(cacheKey);
+    throw error;
+  }
 }
 
 function sumLegs(legs: any[], key: 'distance'|'duration') {

@@ -5,7 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node dist/server.js",
-    "dev": "nodemon src/server.ts",
+    "dev": "nodemon --exec tsx src/server.ts",
     "build": "tsc",
     "cf:dev": "wrangler dev",
     "cf:deploy": "wrangler deploy"
@@ -23,6 +23,7 @@
     "@types/node": "^20.14.9",
     "nodemon": "^3.1.4",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.1",
     "typescript": "^5.5.3",
     "wrangler": "^4.112.0"
   }

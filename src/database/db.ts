@@ -81,6 +81,11 @@ export interface DatabaseSchema {
     tyreSetCost?: number;
     expectedTyreLifeKm?: number;
     fuelPricePerLitre?: number;
+    tyreCostPerKm?: number;
+    driverHourlyWage?: number;
+    holidayPayPct?: number;
+    profitMarginPct?: number;
+    extraLuggageProfitPct?: number;
   }[];
   globalVars?: {
     driverWageWeekday?: number;
@@ -93,6 +98,18 @@ export interface DatabaseSchema {
     yardAddress?: string;
     yardLat?: number;
     yardLng?: number;
+    distanceUnit?: 'km' | 'miles';
+    fuelPricePerLitre?: number;
+    driverHourlyWage?: number;
+    holidayPayPct?: number;
+    profitMarginPct?: number;
+    extraLuggageProfitPct?: number;
+  };
+  operatorDetails?: {
+    companyName?: string;
+    operatorLicence?: string;
+    depotPostcode?: string;
+    notificationEmail?: string;
   };
   surcharges?: any;
   annualOverheads?: any[];
@@ -105,7 +122,9 @@ class KVAdapter {
       if (!env) throw new Error("Environment configuration is missing");
       const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
       const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
-      if (!url || !token) throw new Error("Upstash Redis credentials missing in environment");
+      // Local development uses the bundled seed when hosted Redis credentials
+      // are not present. Production environments continue to use Upstash.
+      if (!url || !token) return structuredClone(seedData) as any as DatabaseSchema;
 
       const res = await fetch(url, {
         method: 'POST',
@@ -140,7 +159,8 @@ class KVAdapter {
       if (!env) throw new Error("Environment configuration is missing");
       const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
       const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
-      if (!url || !token) throw new Error("Upstash Redis credentials missing in environment");
+      // The local seed-backed database is intentionally in-memory.
+      if (!url || !token) return;
 
       const res = await fetch(url, {
         method: 'POST',
@@ -211,8 +231,9 @@ export async function getDatabase(env: any): Promise<DB> {
   } else {
     // Keep it refreshed just in case but update env reference
     db.env = env;
-    // 30 seconds cache TTL
-    if (Date.now() - db.lastFetchTime > 30000) {
+    // Keep admin pricing changes responsive across Worker requests while
+    // avoiding repeated datastore reads inside one quote calculation.
+    if (Date.now() - db.lastFetchTime > 2000) {
       await db.read();
     }
   }

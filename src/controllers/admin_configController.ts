@@ -8,7 +8,8 @@ export const getHandler = async (req: Request, res: Response) => {
     globalVars: db.data?.globalVars,
     surcharges: db.data?.surcharges,
     annualOverheads: db.data?.annualOverheads,
-    blockedDates: db.data?.blockedDates
+    blockedDates: db.data?.blockedDates,
+    operatorDetails: db.data?.operatorDetails
   });
 }
 
@@ -21,6 +22,7 @@ export const postHandler = async (req: Request, res: Response) => {
     if (config.surcharges) db.data.surcharges = config.surcharges;
     if (config.annualOverheads) db.data.annualOverheads = config.annualOverheads;
     if (config.blockedDates) db.data.blockedDates = config.blockedDates;
+    if (config.operatorDetails) db.data.operatorDetails = config.operatorDetails;
     await db.write();
   }
   return res.json({ success: true });

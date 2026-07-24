@@ -18,6 +18,7 @@ interface PricingInput {
   waitingMins: number;
   departureDate: string;
   returnDate?: string;
+  usesM6Toll?: boolean;
 }
 
 function haversineKm(a: {lat: number, lng: number}, b: {lat: number, lng: number}) {
@@ -53,6 +54,28 @@ function matchLocation(coord: {lat: number, lng: number} | null | undefined, nam
   return false;
 }
 
+function calculateOperatingDays(departureDate: string, returnDate?: string) {
+  if (!returnDate) return 1;
+  const departure = new Date(departureDate);
+  const returning = new Date(returnDate);
+  if (Number.isNaN(departure.getTime()) || Number.isNaN(returning.getTime()) || returning <= departure) return 1;
+  const [departureYear, departureMonth, departureDateOfMonth] = departureDate.slice(0, 10).split('-').map(Number);
+  const [returnYear, returnMonth, returnDateOfMonth] = returnDate.slice(0, 10).split('-').map(Number);
+  const departureDay = Date.UTC(departureYear, departureMonth - 1, departureDateOfMonth);
+  const returnDay = Date.UTC(returnYear, returnMonth - 1, returnDateOfMonth);
+  return Math.max(1, Math.round((returnDay - departureDay) / 86400000) + 1);
+}
+
+function getAnnualFixedCost(vehicle: any) {
+  const costs = Array.isArray(vehicle.annualFixedCosts) && vehicle.annualFixedCosts.length > 0
+    ? vehicle.annualFixedCosts
+    : (vehicle.annualCosts || []);
+  return costs.reduce(
+    (sum: number, cost: any) => sum + Number(cost.amount ?? cost.cost ?? 0),
+    0
+  );
+}
+
 export function fleetEconomics(dbData: any) {
   const companyOverheads = dbData.annualOverheads?.reduce((s: number, o: any) => s + Number(o.cost), 0) || 0;
   const totalFleetUnits = dbData.vehicles?.reduce((s: number, v: any) => s + (Number(v.fleetCount)||1), 0) || 1;
@@ -61,7 +84,7 @@ export function fleetEconomics(dbData: any) {
   const vehicleBreakdown = dbData.vehicles?.map((v: any) => {
     const count = Number(v.fleetCount) || 1;
     const utilDays = Number(v.utilisationDays) || 225;
-    const totalAnnualFixed = (v.annualCosts || []).reduce((s: number, c: any) => s + Number(c.cost), 0);
+    const totalAnnualFixed = getAnnualFixedCost(v);
     const annualFixed = totalAnnualFixed / count;
     const dailyStanding = utilDays > 0 ? annualFixed / utilDays : 0;
     const dailyOverhead = utilDays > 0 ? overheadPerUnit / utilDays : 0;
@@ -95,13 +118,23 @@ export async function calculatePrice(input: PricingInput, env: any) {
 
   const vehicle = data.vehicles.find((v: any) => v.id === vehicleId);
   if (!vehicle) throw new Error("Vehicle not found");
+  const departureForRates = new Date(departureDate);
+  const isWeekendDeparture =
+    !Number.isNaN(departureForRates.getTime()) &&
+    (departureForRates.getDay() === 0 || departureForRates.getDay() === 6);
+  const isHolidayDeparture = (data.seasonalPricing || []).some((season: any) =>
+    season.enabled &&
+    new Date(season.startDate) <= departureForRates &&
+    new Date(season.endDate) >= departureForRates
+  );
 
   // 1. Check Route Templates (Radius Match or Exact Match)
+  const templateRadiusFactor = data.globalVars?.distanceUnit === 'miles' ? 1.60934 : 1;
   const template = data.routeTemplates.find(t => 
     t.vehicleId === vehicleId && 
     t.tripType === journeyType &&
-    matchLocation(originCoords, originName, t.pickupGeo, t.pickupArea, t.radiusKm ?? 15) &&
-    matchLocation(destinationCoords, destinationName, t.dropGeo, t.dropArea, t.radiusKm ?? 15)
+    matchLocation(originCoords, originName, t.pickupGeo, t.pickupArea, (t.radiusKm ?? 15) * templateRadiusFactor) &&
+    matchLocation(destinationCoords, destinationName, t.dropGeo, t.dropArea, (t.radiusKm ?? 15) * templateRadiusFactor)
   );
 
   let baseFare = 0;
@@ -110,6 +143,8 @@ export async function calculatePrice(input: PricingInput, env: any) {
   let extraDeadMileageCharge = 0;
   let isManualQuote = false;
   let preSurchargeBase = 0;
+  let driverCost = 0;
+  let dualCrew = false;
 
   if (template) {
     baseFare = template.price;
@@ -135,6 +170,15 @@ export async function calculatePrice(input: PricingInput, env: any) {
 
       waitingCharge = (waitingMins / 60) * matrix.waitingChargePerHour;
       preSurchargeBase = baseFare + extraLiveMileageCharge + extraDeadMileageCharge + waitingCharge;
+
+      const departure = new Date(departureDate);
+      if (!Number.isNaN(departure.getTime())) {
+        const isWeekend = departure.getDay() === 0 || departure.getDay() === 6;
+        const hour = departure.getHours();
+        const isNight = hour < 6 || hour >= 22;
+        if (isWeekend) preSurchargeBase *= Number(matrix.weekendRateMultiplier) || 1;
+        if (isNight) preSurchargeBase *= Number(matrix.nightRateMultiplier) || 1;
+      }
     } else {
 
       isManualQuote = true;
@@ -144,29 +188,47 @@ export async function calculatePrice(input: PricingInput, env: any) {
       const drivHrs = input.totalDurationMinutes / 60; 
       const waitHrs = (Number(waitingMins) || 0) / 60;
       const shiftHrs = drivHrs + waitHrs;
-      const dualCrew = shiftHrs > 9;
 
-      let opDays = 1;
-      if (returnDate && departureDate && new Date(returnDate) > new Date(departureDate)) {
-        opDays = Math.max(1, Math.ceil((new Date(returnDate).getTime() - new Date(departureDate).getTime()) / 86400000) + 1);
-      }
+      const opDays = calculateOperatingDays(departureDate, returnDate);
 
-      const totalAnnualFixed = (vehicle.annualCosts || []).reduce((s: number, c: any) => s + Number(c.cost), 0);
+      const totalAnnualFixed = getAnnualFixedCost(vehicle);
       const fleetCount = vehicle.fleetCount || 1;
       const annualFixed = totalAnnualFixed / fleetCount;
-      const rStanding = annualFixed / (vehicle.utilisationDays || 225);
+      const calculatedStanding = annualFixed / (vehicle.utilisationDays || 225);
+      const rStanding = totalAnnualFixed > 0
+        ? calculatedStanding
+        : Number(vehicle.standingCostPerDay) || 0;
 
       const fuelPrice = vehicle.fuelPricePerLitre ?? gv.fuelPricePerLitre ?? 1.52;
       const fuelPerKm = fuelPrice / (vehicle.fuelKpl || 5);
-      const tyrePerKm = vehicle.tyreCostPerKm ?? 0.05;
-      const maintPerKm = vehicle.maintenanceCostPerKm || 0.15;
-      const cRunning = fuelPerKm + tyrePerKm + maintPerKm;
+      const calculatedTyrePerKm =
+        Number(vehicle.tyreSetCost) > 0 && Number(vehicle.expectedTyreLifeKm) > 0
+          ? Number(vehicle.tyreSetCost) / Number(vehicle.expectedTyreLifeKm)
+          : 0.05;
+      const tyrePerKm = vehicle.tyreCostPerKm ?? calculatedTyrePerKm;
+      const maintPerKm = vehicle.maintenanceCostPerKm ?? 0.15;
+      const hasDetailedRunningCosts =
+        vehicle.fuelKpl != null ||
+        vehicle.tyreCostPerKm != null ||
+        vehicle.maintenanceCostPerKm != null;
+      const cRunning = !hasDetailedRunningCosts && Number(vehicle.ratePerKm) > 0
+        ? Number(vehicle.ratePerKm)
+        : fuelPerKm + tyrePerKm + maintPerKm;
 
-      const driverWage = vehicle.driverHourlyWage ?? gv.driverHourlyWage ?? 17.50;
+      const configuredDriverWage = isHolidayDeparture
+        ? gv.driverWageHoliday
+        : isWeekendDeparture
+          ? gv.driverWageWeekend
+          : gv.driverWageWeekday;
+      const driverWage = vehicle.driverHourlyWage ?? configuredDriverWage ?? gv.driverHourlyWage ?? 17.50;
       const holPayPct = vehicle.holidayPayPct ?? gv.holidayPayPct ?? 12.07;
-      const baseWage = driverWage * shiftHrs * opDays;
+      // The route duration already covers the full outbound/return journey.
+      // Only standing costs are charged per operating day.
+      const averageDailyShiftHrs = shiftHrs / opDays;
+      dualCrew = averageDailyShiftHrs > 9;
+      const baseWage = driverWage * shiftHrs;
       const holPay = baseWage * (holPayPct / 100);
-      const driverCost = (baseWage + holPay) * (dualCrew ? 2 : 1);
+      driverCost = (baseWage + holPay) * (dualCrew ? 2 : 1);
 
       const rawSubtotal = (rStanding * opDays) + (cRunning * totalKm) + driverCost;
 
@@ -195,26 +257,37 @@ export async function calculatePrice(input: PricingInput, env: any) {
                        originName?.toLowerCase().includes("dartford") || destinationName?.toLowerCase().includes("dartford");
 
   if (goesLondon) {
-    surchargeTotal += surcharges.ulez || 12.5;
-    surchargeLines.push({ label: "London ULEZ / CAZ", cost: surcharges.ulez || 12.5 });
+    const cost = surcharges.ulez ?? 12.5;
+    surchargeTotal += cost;
+    if (cost > 0) surchargeLines.push({ label: "London ULEZ / CAZ", cost });
   }
   if (goesBirm) {
-    surchargeTotal += surcharges.birminghamCaz || 9;
-    surchargeLines.push({ label: "Birmingham CAZ", cost: surcharges.birminghamCaz || 9 });
+    const cost = surcharges.birminghamCaz ?? 9;
+    surchargeTotal += cost;
+    if (cost > 0) surchargeLines.push({ label: "Birmingham CAZ", cost });
   }
   if (goesDartford) {
-    surchargeTotal += surcharges.dartford || 2.5;
-    surchargeLines.push({ label: "Dartford Crossing", cost: surcharges.dartford || 2.5 });
+    const cost = surcharges.dartford ?? 2.5;
+    surchargeTotal += cost;
+    if (cost > 0) surchargeLines.push({ label: "Dartford Crossing", cost });
+  }
+  if (input.usesM6Toll) {
+    const cost = surcharges.m6Toll ?? 6.5;
+    surchargeTotal += cost;
+    if (cost > 0) surchargeLines.push({ label: "M6 Toll (PSV)", cost });
   }
 
-  let opDays = 1;
-  if (returnDate && departureDate && new Date(returnDate) > new Date(departureDate)) {
-    opDays = Math.max(1, Math.ceil((new Date(returnDate).getTime() - new Date(departureDate).getTime()) / 86400000) + 1);
-  }
+  const opDays = calculateOperatingDays(departureDate, returnDate);
   if (opDays > 1) {
-    const sub = (surcharges.driverOvernightSubsistence || 55) * (opDays - 1);
+    const sub = (surcharges.driverOvernightSubsistence ?? 55) * (opDays - 1);
     surchargeTotal += sub;
-    surchargeLines.push({ label: `Driver subsistence ×${opDays-1}`, cost: sub });
+    if (sub > 0) surchargeLines.push({ label: `Driver subsistence ×${opDays-1}`, cost: sub });
+    const accommodationPerDriver = data.globalVars?.overnightCost ?? 0;
+    const accommodation = accommodationPerDriver * (opDays - 1) * (dualCrew ? 2 : 1);
+    surchargeTotal += accommodation;
+    if (accommodation > 0) {
+      surchargeLines.push({ label: `Driver overnight accommodation ×${opDays - 1}`, cost: accommodation });
+    }
   }
 
   let finalFare = preSurchargeBase + surchargeTotal;
@@ -222,21 +295,27 @@ export async function calculatePrice(input: PricingInput, env: any) {
 
   if (isManualQuote) {
 
-    const vehicleProfitPct = vehicle?.profitMarginPct ?? gv.profitMarginPct ?? 28;
+    const configuredMargin = isHolidayDeparture
+      ? gv.marginHoliday
+      : isWeekendDeparture
+        ? gv.marginWeekend
+        : gv.marginWeekday;
+    const vehicleProfitPct = vehicle?.profitMarginPct ?? configuredMargin ?? gv.profitMarginPct ?? 28;
     const profitMargin = vehicleProfitPct / 100;
     finalFare = finalFare * (1 + profitMargin);
 
     const eco = fleetEconomics(data);
     const vEco = eco.vehicleBreakdown.find((b: any) => b.id === vehicleId);
-    let opDays = 1;
-    if (returnDate && departureDate && new Date(returnDate) > new Date(departureDate)) {
-      opDays = Math.max(1, Math.ceil((new Date(returnDate).getTime() - new Date(departureDate).getTime()) / 86400000) + 1);
-    }
     const minHire = (vEco ? vEco.minHirePerDay : 0) * opDays;
 
     if (finalFare < minHire) {
       finalFare = minHire;
     }
+  }
+
+  const commercialWeight = Number(vehicle.commercialWeight);
+  if (Number.isFinite(commercialWeight) && commercialWeight > 0) {
+    finalFare *= commercialWeight;
   }
 
   const suitcaseCount = Number(input.suitcaseCount) || 0;
@@ -256,17 +335,32 @@ export async function calculatePrice(input: PricingInput, env: any) {
   let seasonalMultiplier = 1;
   const depDateObj = new Date(departureDate);
 
-  const applicableSeasons = (data.seasonalPricing || []).filter((s: any) => 
-    s.enabled && 
-    new Date(s.startDate) <= depDateObj && 
-    new Date(s.endDate) >= depDateObj &&
-    (!Array.isArray(s.applicableVehicles) || s.applicableVehicles.includes('Any') || s.applicableVehicles.includes(vehicleId))
-  ).sort((a: any, b: any) => (b.priority || 0) - (a.priority || 0));
+  const applicableSeasons = (data.seasonalPricing || []).filter((s: any) => {
+    const vehicleMatches =
+      !Array.isArray(s.applicableVehicles) ||
+      s.applicableVehicles.length === 0 ||
+      s.applicableVehicles.includes('Any') ||
+      s.applicableVehicles.includes(vehicleId);
+    const routeMatches =
+      !Array.isArray(s.applicableRoutes) ||
+      s.applicableRoutes.length === 0 ||
+      s.applicableRoutes.includes('Any') ||
+      s.applicableRoutes.some((route: string) => {
+        const normalized = String(route).toLowerCase();
+        return normalized === `${originName} → ${destinationName}`.toLowerCase() ||
+          normalized === `${originName} -> ${destinationName}`.toLowerCase();
+      });
+    return s.enabled &&
+      new Date(s.startDate) <= depDateObj &&
+      new Date(s.endDate) >= depDateObj &&
+      vehicleMatches &&
+      routeMatches;
+  }).sort((a: any, b: any) => (b.priority || 0) - (a.priority || 0));
 
   if (applicableSeasons.length > 0) {
     const season = applicableSeasons[0];
-    if (season.overrideFare) {
-      finalFare = season.overrideFare;
+    if (season.overrideFare != null) {
+      finalFare = Number(season.overrideFare) + surchargeTotal;
       extraLiveMileageCharge = 0;
       extraDeadMileageCharge = 0;
     } else if (season.multiplier) {
@@ -291,6 +385,8 @@ export async function calculatePrice(input: PricingInput, env: any) {
       seasonalMultiplier,
       surchargeTotal: Math.round(surchargeTotal),
       surchargeLines,
+      driverCost: Math.round(driverCost),
+      dualCrew,
       finalFare: Math.round(finalFare),
       upperBoundFare: Math.round(upperBoundFare),
       isManualQuote

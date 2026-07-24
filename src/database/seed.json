@@ -2406,5 +2406,11 @@
     }
   ],
   "blockedDates": [],
+  "operatorDetails": {
+    "companyName": "Carolean Coaches Ltd",
+    "operatorLicence": "PM0003456",
+    "depotPostcode": "WS2 8TL",
+    "notificationEmail": "bookings@caroleancoaches.co.uk"
+  },
   "googleApiKey": "AIzaSyBVtqA7MSfEKb2EHVFYAizE5Cv4rLkPxPk"
 }
