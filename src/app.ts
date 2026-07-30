@@ -1,21 +1,24 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
+import { compress } from 'hono/compress';
+
 const app = new Hono();
 
+app.use('*', compress());
 app.use('*', cors());
 
-// Basic health check route
+
 app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Root route
+
 app.get('/', (c) => {
   return c.text('CabFare API Backend is running successfully on Hono/Cloudflare.');
 });
 
-// We will mount routes here
+
 import apiRoutes from './routes/api';
 app.route('/api', apiRoutes);
 

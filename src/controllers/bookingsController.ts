@@ -6,11 +6,7 @@ export const getHandler = async (req: Request, res: Response) => {
     const db = await getDatabase(req.env);
     if (!db.data) throw new Error("Database not initialized");
 
-    const limit = req.query?.limit ? parseInt(req.query.limit, 10) : 500;
-    const allBookings = db.data.bookings || [];
-    const bookings = limit === -1 ? allBookings : allBookings.slice(0, limit);
-
-    return res.json({ bookings });
+    return res.json({ bookings: db.data.bookings || [] });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
