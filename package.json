@@ -1,11 +1,13 @@
 {
   "name": "cabfare-backend",
   "version": "1.0.0",
+  "type": "module",
   "description": "Backend for CabFare Admin",
   "main": "src/server.js",
   "scripts": {
-    "start": "node dist/server.js",
-    "dev": "nodemon --exec tsx src/server.ts",
+    "start": "node --env-file=.env dist/server.js",
+    "dev": "nodemon --exec \"tsx --env-file=.env\" src/server.ts",
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "build": "tsc",
     "cf:dev": "wrangler dev",
     "cf:deploy": "wrangler deploy"

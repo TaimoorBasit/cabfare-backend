@@ -1,5 +1,12 @@
-// No fs, path, or Node.js built-ins.
-import seedData from './seed.json';
+
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const localDatabasePath = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../.data/db.json'
+);
 
 export interface User {
   id: string;
@@ -23,6 +30,12 @@ export interface PricingMatrixRule {
   nightRateMultiplier: number;
   weekendRateMultiplier: number;
   status: 'active' | 'inactive';
+  scope?: 'global' | 'fleet' | 'city';
+  distanceBands?: {
+    min: number;
+    max: number | null;
+    rate: number;
+  }[];
   pickupGeo?: { lat: number; lng: number };
   dropGeo?: { lat: number; lng: number };
 }
@@ -37,6 +50,7 @@ export interface RouteTemplate {
   pickupGeo?: { lat: number; lng: number };
   dropGeo?: { lat: number; lng: number };
   radiusKm?: number;
+  waitingChargePerHour?: number;
 }
 
 export interface SeasonalPricing {
@@ -72,7 +86,7 @@ export interface DatabaseSchema {
     ratePerKm?: number;
     standingCostPerDay?: number;
     commercialWeight?: number;
-    // legacy fields
+    
     fleetCount?: number;
     utilisationDays?: number;
     annualCosts?: any[];
@@ -95,6 +109,7 @@ export interface DatabaseSchema {
     marginWeekend?: number;
     marginHoliday?: number;
     overnightCost?: number;
+    waitingChargePerHour?: number;
     yardAddress?: string;
     yardLat?: number;
     yardLng?: number;
@@ -114,6 +129,34 @@ export interface DatabaseSchema {
   surcharges?: any;
   annualOverheads?: any[];
   blockedDates?: any[];
+  activityLog?: {
+    id: string;
+    type: string;
+    message: string;
+    createdAt: string;
+  }[];
+}
+
+function createEmptyDatabase(): DatabaseSchema {
+  return {
+    users: [],
+    pricingMatrix: [],
+    routeTemplates: [],
+    seasonalPricing: [],
+    mileageRules: [],
+    bookings: [],
+    quotes: [],
+    waitingCharges: [],
+    vehicleAvailability: [],
+    routeCache: [],
+    vehicles: [],
+    globalVars: {},
+    operatorDetails: {},
+    surcharges: {},
+    annualOverheads: [],
+    blockedDates: [],
+    activityLog: []
+  };
 }
 
 class KVAdapter {
@@ -122,9 +165,19 @@ class KVAdapter {
       if (!env) throw new Error("Environment configuration is missing");
       const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
       const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
-      // Local development uses the bundled seed when hosted Redis credentials
-      // are not present. Production environments continue to use Upstash.
-      if (!url || !token) return structuredClone(seedData) as any as DatabaseSchema;
+      
+      if (!url || !token) {
+        try {
+          const savedData = await readFile(localDatabasePath, 'utf8');
+          return JSON.parse(savedData) as DatabaseSchema;
+        } catch (error: any) {
+          if (error?.code !== 'ENOENT') throw error;
+          const initialData = createEmptyDatabase();
+          await mkdir(path.dirname(localDatabasePath), { recursive: true });
+          await writeFile(localDatabasePath, JSON.stringify(initialData, null, 2), 'utf8');
+          return initialData;
+        }
+      }
 
       const res = await fetch(url, {
         method: 'POST',
@@ -159,8 +212,14 @@ class KVAdapter {
       if (!env) throw new Error("Environment configuration is missing");
       const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
       const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
-      // The local seed-backed database is intentionally in-memory.
-      if (!url || !token) return;
+      
+      if (!url || !token) {
+        await mkdir(path.dirname(localDatabasePath), { recursive: true });
+        const temporaryPath = `${localDatabasePath}.tmp`;
+        await writeFile(temporaryPath, JSON.stringify(data, null, 2), 'utf8');
+        await rename(temporaryPath, localDatabasePath);
+        return;
+      }
 
       const res = await fetch(url, {
         method: 'POST',
@@ -218,7 +277,7 @@ export async function initDatabase(env: any): Promise<DB> {
   await db.read();
 
   if (!db.data || Object.keys(db.data).length === 0) {
-    db.data = seedData as any as DatabaseSchema;
+    db.data = createEmptyDatabase();
     await db.write();
   }
 
@@ -229,13 +288,25 @@ export async function getDatabase(env: any): Promise<DB> {
   if (!db) {
     await initDatabase(env);
   } else {
-    // Keep it refreshed just in case but update env reference
+    
     db.env = env;
-    // Keep admin pricing changes responsive across Worker requests while
-    // avoiding repeated datastore reads inside one quote calculation.
+    
+    
     if (Date.now() - db.lastFetchTime > 2000) {
       await db.read();
     }
   }
   return db!;
+}
+
+export function addActivity(db: DB, type: string, message: string) {
+  if (!db.data) return;
+  if (!Array.isArray(db.data.activityLog)) db.data.activityLog = [];
+  db.data.activityLog.unshift({
+    id: `activity_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    message,
+    createdAt: new Date().toISOString()
+  });
+  db.data.activityLog = db.data.activityLog.slice(0, 100);
 }

@@ -1,5 +1,12 @@
 import { getDatabase } from '../database/db';
 
+export class MileageUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MileageUnavailableError';
+  }
+}
+
 export async function getDirections(origin: any, destination: any, waypoints: any[] = [], apiKey: string) {
   if (!apiKey) throw new Error("Google Maps API key is required");
 
@@ -22,27 +29,32 @@ export async function getDirections(origin: any, destination: any, waypoints: an
 }
 
 function formatLoc(loc: any) {
-  if (typeof loc === 'string') return encodeURIComponent(loc);
-  if (loc && loc.lat && loc.lng) return `${loc.lat},${loc.lng}`;
-  return '';
+  if (typeof loc === 'string' && loc.trim()) return encodeURIComponent(loc.trim());
+  if (loc && Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng))) {
+    return `${Number(loc.lat)},${Number(loc.lng)}`;
+  }
+  throw new Error('A valid route location is required');
 }
 
 const mileageCache = new Map<string, any>();
 
 export async function calculateMileage(journey: any, env: any) {
   const db = await getDatabase(env);
-  const apiKey = env?.GOOGLE_MAPS_API_KEY || env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || (db.data as any)?.googleApiKey || '';
+  const apiKey = env?.GOOGLE_MAPS_API_KEY || '';
   if (!apiKey) {
-    // Fallback if no API key
-    return fallbackCalculateMileage(journey);
+    throw new MileageUnavailableError('Mileage calculation is unavailable: GOOGLE_MAPS_API_KEY is not configured');
   }
 
   const { origin, destination, waypoints, stops = [] } = journey;
-  const yardLat = db.data?.globalVars?.yardLat;
-  const yardLng = db.data?.globalVars?.yardLng;
-  const yardLoc = (yardLat && yardLng) 
-    ? { lat: Number(yardLat), lng: Number(yardLng) } 
-    : (db.data?.globalVars?.yardAddress || "Unit 1, Carolean Coaches Bentley Lane Walsall WS2 8TL , UK");
+  const yardLat = Number(db.data?.globalVars?.yardLat);
+  const yardLng = Number(db.data?.globalVars?.yardLng);
+  const yardAddress = String(db.data?.globalVars?.yardAddress || '').trim();
+  const yardLoc = Number.isFinite(yardLat) && Number.isFinite(yardLng)
+    ? { lat: yardLat, lng: yardLng }
+    : yardAddress || null;
+  if (!yardLoc) {
+    throw new MileageUnavailableError('Mileage calculation is unavailable: a depot/yard location is not configured');
+  }
 
   // Build the live route points
   const livePoints = waypoints?.length >= 2 ? waypoints : [origin, destination];
@@ -51,7 +63,10 @@ export async function calculateMileage(journey: any, env: any) {
   const liveWaypoints = livePoints.slice(1, -1);
 
   const isReturn = journey.journeyType === 'return';
-  const distanceUnit = db.data?.globalVars?.distanceUnit || 'km';
+  const distanceUnit = db.data?.globalVars?.distanceUnit;
+  if (distanceUnit !== 'km' && distanceUnit !== 'miles') {
+    throw new MileageUnavailableError('Mileage calculation is unavailable: distance unit is not configured');
+  }
   const cacheWindow = Math.floor(Date.now() / 900000);
   const cacheKey = JSON.stringify({ liveOrigin, liveDestination, liveWaypoints, yardLoc, isReturn, distanceUnit, cacheWindow });
   if (mileageCache.has(cacheKey)) {
@@ -60,7 +75,7 @@ export async function calculateMileage(journey: any, env: any) {
 
   const mileagePromise = (async () => {
     try {
-      // 1. Calculate Live Mileage
+      
     const liveDirections = await getDirections(liveOrigin, liveDestination, liveWaypoints, apiKey);
     let liveDistanceMeters = sumLegs(liveDirections.routes[0].legs, 'distance');
     let liveDurationSeconds = sumLegs(liveDirections.routes[0].legs, 'duration');
@@ -95,7 +110,7 @@ export async function calculateMileage(journey: any, env: any) {
     return result;
   } catch (error: any) {
     console.error("Mileage engine error:", error);
-    throw new Error(`Unable to calculate the road route: ${error.message}`);
+    throw new MileageUnavailableError(`Unable to calculate the road route: ${error.message}`);
   }
   })();
 
@@ -116,24 +131,3 @@ function sumLegs(legs: any[], key: 'distance'|'duration') {
   return legs.reduce((sum, leg) => sum + leg[key].value, 0);
 }
 
-function haversineKm(a: any, b: any) {
-  if (!a || !b) return 60;
-
-  return 60;
-}
-
-function fallbackCalculateMileage(journey: any) {
-
-  const isReturn = journey.journeyType === 'return';
-  const liveKm = isReturn ? 200 : 100;
-  const deadKm = 40;
-  return {
-    liveKm,
-    deadKm,
-    totalKm: liveKm + deadKm,
-    liveDurationMinutes: isReturn ? 240 : 120,
-    totalDurationMinutes: isReturn ? 280 : 160,
-    geometry: null,
-    legs: []
-  };
-}

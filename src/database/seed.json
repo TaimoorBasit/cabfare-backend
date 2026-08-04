@@ -2,10 +2,10 @@
   "users": [],
   "pricingMatrix": [
     {
-      "pickupArea": "Hounslow, UK",
-      "dropArea": "Downhills Park Rd, London N17 6PE, UK",
-      "tripType": "one-way",
-      "vehicleId": "minibus",
+      "pickupArea": "Any",
+      "dropArea": "Any",
+      "tripType": "any",
+      "vehicleId": "",
       "baseFare": 200,
       "includedLiveMileage": 0,
       "includedDeadMileage": 0,
@@ -14,7 +14,14 @@
       "nightRateMultiplier": 1,
       "weekendRateMultiplier": 1,
       "status": "active",
-      "id": "matrix_1783002000731"
+      "id": "matrix_1783002000731",
+      "scope": "global",
+      "distanceBands": [
+        { "min": 0, "max": 10, "rate": 3 },
+        { "min": 10, "max": 30, "rate": 2.4 },
+        { "min": 30, "max": 60, "rate": 2 },
+        { "min": 60, "max": null, "rate": 1.6 }
+      ]
     }
   ],
   "routeTemplates": [

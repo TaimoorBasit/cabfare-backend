@@ -13,15 +13,18 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 export async function createUser(email: string, password: string, name: string, env: any): Promise<User | null> {
   const db = await getDatabase(env);
   if (!db.data) return null;
-  
-  const existingUser = db.data.users.find((u: User) => u.email === email);
-  if (existingUser) return null; // Email already in use
+
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const existingUser = db.data.users.find(
+    (u: User) => String(u.email).trim().toLowerCase() === normalizedEmail
+  );
+  if (existingUser) return null; 
 
   const passwordHash = await hashPassword(password);
 
   const newUser: User = {
-    id: Date.now().toString(), // basic id generation
-    email,
+    id: Date.now().toString(), 
+    email: normalizedEmail,
     passwordHash,
     name,
     createdAt: new Date().toISOString()
@@ -36,7 +39,10 @@ export async function createUser(email: string, password: string, name: string, 
 export async function findUserByEmail(email: string, env: any): Promise<User | null> {
   const db = await getDatabase(env);
   if (!db.data) return null;
-  return db.data.users.find((u: User) => u.email === email) || null;
+  const normalizedEmail = String(email).trim().toLowerCase();
+  return db.data.users.find(
+    (u: User) => String(u.email).trim().toLowerCase() === normalizedEmail
+  ) || null;
 }
 
 export async function findUserById(id: string, env: any): Promise<User | null> {

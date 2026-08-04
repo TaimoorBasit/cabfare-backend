@@ -91,7 +91,7 @@ export async function generateQuotes(journey: any, env: any) {
       usesM6Toll
     }, env);
 
-    // requiredVehicles already calculated above
+    
 
     quotes.push({
       vehicle,

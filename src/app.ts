@@ -6,7 +6,18 @@ import { compress } from 'hono/compress';
 const app = new Hono();
 
 app.use('*', compress());
-app.use('*', cors());
+app.use('*', cors({
+  origin: (origin, c) => {
+    const configuredOrigins = String(c.env?.ADMIN_ORIGINS || 'http://localhost:3000,http://localhost:3001')
+      .split(',')
+      .map((value: string) => value.trim())
+      .filter(Boolean);
+    return configuredOrigins.includes(origin) ? origin : '';
+  },
+  allowHeaders: ['Content-Type', 'Authorization'],
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  maxAge: 86400
+}));
 
 
 app.get('/health', (c) => {

@@ -6,14 +6,22 @@ export interface JWTPayload {
   exp?: number;
 }
 
+function jwtSecret(env: any): string {
+  const secret = env?.JWT_SECRET;
+  if (!secret || String(secret).length < 32) {
+    throw new Error('JWT_SECRET must be configured with at least 32 characters');
+  }
+  return String(secret);
+}
+
 export async function createToken(payload: JWTPayload, env: any): Promise<string> {
-  const secret = env?.JWT_SECRET || 'your-super-secret-key-change-in-production';
-  const exp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // 7 days
+  const secret = jwtSecret(env);
+  const exp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; 
   return sign({ ...payload, exp }, secret, "HS256");
 }
 
 export async function verifyToken(token: string, env: any): Promise<JWTPayload | null> {
-  const secret = env?.JWT_SECRET || 'your-super-secret-key-change-in-production';
+  const secret = jwtSecret(env);
   try {
     const decoded = await verify(token, secret, "HS256");
     return decoded as unknown as JWTPayload;
