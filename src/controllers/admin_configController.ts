@@ -52,7 +52,8 @@ function validateBlockedDates(blocks: any[], vehicleIds: Set<string>): string | 
   for (const block of blocks) {
     const from = new Date(block?.from);
     const to = new Date(block?.to);
-    if (!block?.id || !vehicleIds.has(String(block.vehicleId || '')) ||
+    const vId = String(block.vehicleId || '').trim();
+    if (!block?.id || (vId !== '' && !vehicleIds.has(vId)) ||
       Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from ||
       !Number.isInteger(Number(block.units)) || Number(block.units) < 1 || !String(block.reason || '').trim()) {
       return 'Every blocked date requires an id, valid vehicle, date range, reason, and positive whole-unit count';
@@ -80,6 +81,123 @@ export const postHandler = async (req: Request, res: Response) => {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     return res.status(400).json({ error: 'Configuration payload must be an object' });
   }
+
+  // 1. Heal vehicles
+  if (config.vehicles && Array.isArray(config.vehicles)) {
+    config.vehicles = config.vehicles.map((v: any) => {
+      if (!v || typeof v !== 'object') return v;
+      const dbVehicle = db.data?.vehicles?.find((x: any) => x.id === v.id) || {};
+
+      // Positive fields must be finite and > 0
+      for (const field of positiveVehicleFields) {
+        const val = Number(v[field]);
+        if (!Number.isFinite(val) || val <= 0) {
+          v[field] = Number((dbVehicle as any)[field] || (field === 'capacity' ? 16 : field === 'fleetCount' ? 1 : 220));
+        } else {
+          v[field] = val;
+        }
+      }
+
+      // Non-negative fields must be finite and >= 0
+      for (const field of nonNegativeVehicleFields) {
+        const val = Number(v[field]);
+        if (!Number.isFinite(val) || val < 0) {
+          v[field] = Number((dbVehicle as any)[field] || 0);
+        } else {
+          v[field] = val;
+        }
+      }
+
+      // Annual costs sanitization
+      for (const key of ['annualCosts', 'annualFixedCosts']) {
+        if (v[key] !== undefined) {
+          if (!Array.isArray(v[key])) {
+            v[key] = [];
+          } else {
+            v[key] = v[key].map((cost: any, index: number) => {
+              if (!cost || typeof cost !== 'object') return { id: index + 1, label: 'Unnamed Cost', cost: 0, name: 'Unnamed Cost', amount: 0 };
+              const costLabel = String(cost.label || cost.name || '').trim() || 'Unnamed Cost';
+              const costVal = Number(cost.cost ?? cost.amount ?? 0);
+              const cleanVal = (Number.isFinite(costVal) && costVal >= 0) ? costVal : 0;
+              return {
+                id: cost.id ?? (index + 1),
+                label: costLabel,
+                cost: cleanVal,
+                name: costLabel,
+                amount: cleanVal
+              };
+            });
+          }
+        }
+      }
+      return v;
+    });
+  }
+
+  // 2. Heal globalVars
+  if (config.globalVars && typeof config.globalVars === 'object' && !Array.isArray(config.globalVars)) {
+    const dbGv = db.data?.globalVars || {};
+    for (const field of numericGlobalFields) {
+      if ((config.globalVars as any)[field] !== undefined) {
+        const val = Number((config.globalVars as any)[field]);
+        if (!Number.isFinite(val)) {
+          (config.globalVars as any)[field] = Number((dbGv as any)[field] || 0);
+        } else if (nonNegativeGlobalFields.includes(field) && val < 0) {
+          (config.globalVars as any)[field] = 0;
+        } else {
+          (config.globalVars as any)[field] = val;
+        }
+      }
+    }
+    if (config.globalVars.distanceUnit !== undefined && !['km', 'miles'].includes(config.globalVars.distanceUnit)) {
+      config.globalVars.distanceUnit = (dbGv as any).distanceUnit || 'miles';
+    }
+    if (config.globalVars.yardLat !== undefined) {
+      const lat = Number(config.globalVars.yardLat);
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+        config.globalVars.yardLat = Number((dbGv as any).yardLat || 51.5074);
+      }
+    }
+    if (config.globalVars.yardLng !== undefined) {
+      const lng = Number(config.globalVars.yardLng);
+      if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+        config.globalVars.yardLng = Number((dbGv as any).yardLng || -0.1278);
+      }
+    }
+  }
+
+  // 3. Heal surcharges
+  if (config.surcharges && typeof config.surcharges === 'object' && !Array.isArray(config.surcharges)) {
+    const dbSr = db.data?.surcharges || {};
+    for (const [key, value] of Object.entries(config.surcharges)) {
+      const val = Number(value);
+      if (!Number.isFinite(val) || val < 0) {
+        (config.surcharges as any)[key] = Number((dbSr as any)[key] || 0);
+      } else {
+        (config.surcharges as any)[key] = val;
+      }
+    }
+  }
+
+  // 4. Heal annualOverheads
+  if (config.annualOverheads !== undefined) {
+    if (!Array.isArray(config.annualOverheads)) {
+      config.annualOverheads = [];
+    } else {
+      config.annualOverheads = config.annualOverheads.map((item: any, index: number) => {
+        if (!item || typeof item !== 'object') return { id: index + 1, label: 'Unnamed Overhead', cost: 0 };
+        const label = String(item.label || item.name || '').trim() || 'Unnamed Overhead';
+        const cost = Number(item.cost ?? item.amount ?? 0);
+        const cleanCost = (Number.isFinite(cost) && cost >= 0) ? cost : 0;
+        return {
+          id: item.id ?? (index + 1),
+          label,
+          cost: cleanCost
+        };
+      });
+    }
+  }
+
   if (config.vehicles !== undefined && !Array.isArray(config.vehicles)) {
     return res.status(400).json({ error: 'Vehicles must be an array' });
   }
@@ -119,8 +237,15 @@ export const postHandler = async (req: Request, res: Response) => {
   if (config.operatorDetails !== undefined && (typeof config.operatorDetails !== 'object' || Array.isArray(config.operatorDetails))) {
     return res.status(400).json({ error: 'Operator details must be an object' });
   }
-  if (config.operatorDetails?.notificationEmail && !/^\S+@\S+\.\S+$/.test(String(config.operatorDetails.notificationEmail))) {
-    return res.status(400).json({ error: 'Notification email is invalid' });
+  if (config.operatorDetails) {
+    const requiredOperatorFields = ['companyName', 'operatorLicence', 'depotPostcode', 'notificationEmail'];
+    const missingOperatorFields = requiredOperatorFields.filter(field => !String(config.operatorDetails[field] || '').trim());
+    if (missingOperatorFields.length) {
+      return res.status(400).json({ error: `Operator details cannot be blank: ${missingOperatorFields.join(', ')}` });
+    }
+    if (!/^\S+@\S+\.\S+$/.test(String(config.operatorDetails.notificationEmail))) {
+      return res.status(400).json({ error: 'Notification email is invalid' });
+    }
   }
   if (db.data) {
     if (config.vehicles) db.data.vehicles = config.vehicles;
@@ -138,7 +263,12 @@ export const postHandler = async (req: Request, res: Response) => {
     }
     if (config.annualOverheads) db.data.annualOverheads = config.annualOverheads;
     if (config.blockedDates) db.data.blockedDates = config.blockedDates;
-    if (config.operatorDetails) db.data.operatorDetails = config.operatorDetails;
+    if (config.operatorDetails) {
+      db.data.operatorDetails = {
+        ...(db.data.operatorDetails || {}),
+        ...config.operatorDetails
+      };
+    }
     addActivity(db, 'configuration', 'Admin configuration updated');
     await db.write();
   }

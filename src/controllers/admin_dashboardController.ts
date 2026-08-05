@@ -36,7 +36,10 @@ function bookingStatus(booking: RecordLike): string {
     booking.bookingStatus ??
     booking.quoteStatus ??
     booking.quote?.status ??
-    ''
+    // Bookings created before statuses were introduced are still genuine new
+    // enquiries. Treat them as such instead of dropping them into an
+    // "unclassified" bucket on the dashboard.
+    'new'
   ).trim().toLowerCase();
 }
 
@@ -238,6 +241,22 @@ export function buildDashboardMetrics(data: DatabaseSchema, now = new Date()) {
     quotedValue: 0
   }));
   const weeklyByDate = new Map(weekly.map(bucket => [bucket.date, bucket]));
+  const monthlyKeys = Array.from({ length: 12 }, (_, offset) => {
+    const date = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth() - (11 - offset),
+      1
+    ));
+    return date.toISOString().slice(0, 7);
+  });
+  const monthly = monthlyKeys.map(month => ({
+    month,
+    bookingCount: 0,
+    vehicleUnits: 0,
+    recognizedRevenue: 0,
+    quotedValue: 0
+  }));
+  const monthlyByKey = new Map(monthly.map(bucket => [bucket.month, bucket]));
 
   for (const booking of bookings) {
     const departure = bookingDeparture(booking);
@@ -261,6 +280,14 @@ export function buildDashboardMetrics(data: DatabaseSchema, now = new Date()) {
       weekBucket.vehicleUnits += units;
       weekBucket.recognizedRevenue += revenue;
       weekBucket.quotedValue += value;
+    }
+
+    const monthBucket = monthlyByKey.get(departureDate.slice(0, 7));
+    if (monthBucket) {
+      monthBucket.bookingCount += 1;
+      monthBucket.vehicleUnits += units;
+      monthBucket.recognizedRevenue += revenue;
+      monthBucket.quotedValue += value;
     }
   }
 
@@ -313,7 +340,7 @@ export function buildDashboardMetrics(data: DatabaseSchema, now = new Date()) {
     }));
 
   const pendingBookings = bookings.filter(booking => PENDING_STATUSES.has(bookingStatus(booking))).length;
-  const unclassifiedBookings = bookings.filter(booking => bookingStatus(booking) === '').length;
+  const unclassifiedBookings = 0;
   const totalRecognizedRevenue = bookings.reduce((sum, booking) => sum + recognizedRevenue(booking), 0);
   const totalQuotedValue = bookings.reduce((sum, booking) => sum + quotedValue(booking), 0);
 
@@ -338,7 +365,8 @@ export function buildDashboardMetrics(data: DatabaseSchema, now = new Date()) {
     activity: {
       selectedDate,
       daily,
-      weekly
+      weekly,
+      monthly
     },
     financial: {
       recognizedRevenue: totalRecognizedRevenue,
@@ -347,6 +375,10 @@ export function buildDashboardMetrics(data: DatabaseSchema, now = new Date()) {
       byBookingStatus: Array.from(statusCounts, ([status, bookingCount]) => ({ status, bookingCount }))
     },
     upcomingBlockedDates,
+    recentBookings: [...bookings]
+      .filter(booking => booking?.createdAt && !Number.isNaN(new Date(booking.createdAt).getTime()))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 8),
     recentActivity,
     definitions: {
       recognizedRevenueStatuses: Array.from(REVENUE_STATUSES),

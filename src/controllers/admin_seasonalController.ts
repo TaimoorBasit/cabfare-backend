@@ -42,10 +42,32 @@ export const getHandler = async (req: Request, res: Response) => {
   return res.json(db.data?.seasonalPricing || []);
 };
 
+function healSeason(item: any) {
+  if (!item || typeof item !== 'object') return item;
+  if (!Array.isArray(item.applicableVehicles)) {
+    item.applicableVehicles = ['Any'];
+  }
+  if (!Array.isArray(item.applicableRoutes)) {
+    item.applicableRoutes = ['Any'];
+  }
+  if (item.priority === undefined || item.priority === null || item.priority === '' || !Number.isFinite(Number(item.priority))) {
+    item.priority = 0;
+  }
+  if (typeof item.enabled !== 'boolean') {
+    item.enabled = true;
+  }
+  const hasMult = item.multiplier !== '' && item.multiplier !== null && item.multiplier !== undefined && Number.isFinite(Number(item.multiplier));
+  const hasOver = item.overrideFare !== '' && item.overrideFare !== null && item.overrideFare !== undefined && Number.isFinite(Number(item.overrideFare));
+  if (!hasMult && !hasOver) {
+    item.multiplier = 1;
+  }
+  return item;
+}
+
 export const postHandler = async (req: Request, res: Response) => {
   const db = await getDatabase(req.env);
   if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
-  const item = { ...req.body, id: `season_${Date.now()}` };
+  const item = healSeason({ ...req.body, id: `season_${Date.now()}` });
   const error = validateSeason(item, new Set((db.data.vehicles || []).map(vehicle => vehicle.id)));
   if (error) return res.status(400).json({ error });
   const season = normalizedSeason(item);
@@ -58,7 +80,7 @@ export const postHandler = async (req: Request, res: Response) => {
 export const putHandler = async (req: Request, res: Response) => {
   const db = await getDatabase(req.env);
   if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
-  const item = req.body;
+  const item = healSeason(req.body);
   if (!item?.id) return res.status(400).json({ error: 'Seasonal rule id is required' });
   const index = db.data.seasonalPricing.findIndex(rule => rule.id === item.id);
   if (index < 0) return res.status(404).json({ error: 'Seasonal rule not found' });

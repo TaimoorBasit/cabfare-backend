@@ -22,6 +22,28 @@
         { "min": 30, "max": 60, "rate": 2 },
         { "min": 60, "max": null, "rate": 1.6 }
       ]
+    },
+    {
+      "pickupArea": "Any",
+      "dropArea": "Any",
+      "tripType": "any",
+      "vehicleId": "coach",
+      "baseFare": 250,
+      "includedLiveMileage": 0,
+      "includedDeadMileage": 0,
+      "waitingChargePerHour": 35,
+      "extraMileageRate": 5.6,
+      "nightRateMultiplier": 1.2,
+      "weekendRateMultiplier": 1.15,
+      "status": "active",
+      "id": "matrix_premium_coach",
+      "scope": "fleet",
+      "distanceBands": [
+        { "min": 0, "max": 10, "rate": 9.25 },
+        { "min": 10, "max": 30, "rate": 7.8 },
+        { "min": 30, "max": 60, "rate": 6.5 },
+        { "min": 60, "max": null, "rate": 5.6 }
+      ]
     }
   ],
   "routeTemplates": [
@@ -2332,83 +2354,97 @@
     },
     {
       "id": "coach",
-      "name": "Premium Coach",
+      "name": "Premium Coach (49 Seats)",
       "emoji": "coach",
       "desc": "Full-size luxury for large groups",
-      "capacity": 51,
+      "capacity": 49,
       "fleetCount": 1,
-      "utilisationDays": 225,
+      "utilisationDays": 260,
       "annualCosts": [
         {
           "id": 1,
           "label": "Vehicle Excise Duty (VED)",
-          "cost": 1150
+          "cost": 1650
         },
         {
           "id": 2,
           "label": "Annual Insurance",
-          "cost": 9200
+          "cost": 7800
         },
         {
           "id": 3,
           "label": "Annual Depreciation",
-          "cost": 23317
+          "cost": 16500
         }
       ],
-      "fuelKpl": 5.8,
-      "maintenanceCostPerKm": 0.15,
-      "tyreSetCost": 5200,
-      "expectedTyreLifeKm": 100000
+      "fuelKpl": 3.6,
+      "maintenanceCostPerKm": 0.28,
+      "tyreCostPerKm": 0.09,
+      "tyreSetCost": 2400,
+      "expectedTyreLifeKm": 80000,
+      "profitMarginPct": 30,
+      "fuelPricePerLitre": 1.52,
+      "standingCostPerDay": 99.8076923077,
+      "ratePerKm": 0.7922222222
     }
   ],
   "globalVars": {
     "fuelPricePerLitre": 1.52,
-    "driverHourlyWage": 17.5,
+    "driverHourlyWage": 18,
     "holidayPayPct": 12.07,
-    "profitMarginPct": 28,
-    "yardAddress": ""
+    "profitMarginPct": 30,
+    "driverWageWeekday": 18,
+    "driverWageWeekend": 22,
+    "driverWageHoliday": 25,
+    "marginWeekday": 30,
+    "marginWeekend": 30,
+    "marginHoliday": 30,
+    "overnightCost": 220,
+    "waitingChargePerHour": 35,
+    "distanceUnit": "miles",
+    "yardAddress": "Unit 1, Carolean Coaches, Bentley Lane, Walsall WS2 8TL, UK"
   },
   "surcharges": {
-    "m6Toll": 6.5,
+    "m6Toll": 9.5,
     "dartford": 2.5,
     "ulez": 12.5,
-    "birminghamCaz": 9,
-    "driverOvernightSubsistence": 55
+    "birminghamCaz": 8,
+    "driverOvernightSubsistence": 60
   },
   "annualOverheads": [
     {
       "id": 1,
-      "label": "Office & premises rent",
+      "label": "Office & Premises",
       "cost": 18000
     },
     {
       "id": 2,
-      "label": "Administration & staffing",
+      "label": "Administration & Staffing",
       "cost": 14400
     },
     {
       "id": 3,
-      "label": "Accountancy & legal",
+      "label": "Accountancy & Legal",
       "cost": 5200
     },
     {
       "id": 4,
-      "label": "IT, phones & communications",
+      "label": "IT & Communication",
       "cost": 2400
     },
     {
       "id": 5,
-      "label": "Marketing & website",
+      "label": "Marketing",
       "cost": 3600
     },
     {
       "id": 6,
-      "label": "Fleet operator licence & fees",
+      "label": "Fleet Operator Licence",
       "cost": 1800
     },
     {
       "id": 7,
-      "label": "Miscellaneous overheads",
+      "label": "Miscellaneous",
       "cost": 4600
     }
   ],

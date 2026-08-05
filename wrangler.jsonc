@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cabfare-backend",
+  "main": "src/app.ts",
+  "compatibility_date": "2026-07-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "kv_namespaces": [
+    {
+      "binding": "CABFARE_DB",
+      "id": "162fd13751b1427e840f4a93442513ac"
+    }
+  ]
+}

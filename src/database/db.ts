@@ -1,12 +1,11 @@
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import seedData from './seed.json';
 
-const localDatabasePath = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../.data/db.json'
-);
+// Kept relative so Cloudflare can validate the Worker bundle. This path is
+// touched only by the local-file fallback; production uses CABFARE_DB KV.
+const localDatabasePath = '.data/db.json';
 
 export interface User {
   id: string;
@@ -140,7 +139,7 @@ export interface DatabaseSchema {
 function createEmptyDatabase(): DatabaseSchema {
   return {
     users: [],
-    pricingMatrix: [],
+    pricingMatrix: structuredClone(seedData.pricingMatrix) as PricingMatrixRule[],
     routeTemplates: [],
     seasonalPricing: [],
     mileageRules: [],
@@ -149,11 +148,11 @@ function createEmptyDatabase(): DatabaseSchema {
     waitingCharges: [],
     vehicleAvailability: [],
     routeCache: [],
-    vehicles: [],
-    globalVars: {},
-    operatorDetails: {},
-    surcharges: {},
-    annualOverheads: [],
+    vehicles: structuredClone(seedData.vehicles),
+    globalVars: structuredClone(seedData.globalVars) as DatabaseSchema['globalVars'],
+    operatorDetails: structuredClone(seedData.operatorDetails),
+    surcharges: structuredClone(seedData.surcharges),
+    annualOverheads: structuredClone(seedData.annualOverheads),
     blockedDates: [],
     activityLog: []
   };
@@ -163,10 +162,18 @@ class KVAdapter {
   async read(env: any): Promise<DatabaseSchema | null> {
     try {
       if (!env) throw new Error("Environment configuration is missing");
+      const cloudflareKv = env.CABFARE_DB && typeof env.CABFARE_DB.get === 'function'
+        ? env.CABFARE_DB
+        : null;
+      if (cloudflareKv) {
+        const storedData = await cloudflareKv.get('cabfare_db', 'json');
+        if (storedData) return storedData as DatabaseSchema;
+      }
       const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
       const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
       
       if (!url || !token) {
+        if (cloudflareKv) return null;
         try {
           const savedData = await readFile(localDatabasePath, 'utf8');
           return JSON.parse(savedData) as DatabaseSchema;
@@ -198,7 +205,9 @@ class KVAdapter {
          throw new Error(`Upstash DB Error: ${json.error}`);
       }
       if (json && json.result) {
-        return JSON.parse(json.result);
+        const legacyData = JSON.parse(json.result) as DatabaseSchema;
+        if (cloudflareKv) await cloudflareKv.put('cabfare_db', JSON.stringify(legacyData));
+        return legacyData;
       }
     } catch (e: any) {
       console.error("KV read error:", e);
@@ -210,12 +219,16 @@ class KVAdapter {
   async write(data: DatabaseSchema, env: any): Promise<void> {
     try {
       if (!env) throw new Error("Environment configuration is missing");
+      if (env.CABFARE_DB && typeof env.CABFARE_DB.put === 'function') {
+        await env.CABFARE_DB.put('cabfare_db', JSON.stringify(data));
+        return;
+      }
       const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
       const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
       
       if (!url || !token) {
         await mkdir(path.dirname(localDatabasePath), { recursive: true });
-        const temporaryPath = `${localDatabasePath}.tmp`;
+        const temporaryPath = `${localDatabasePath}.${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
         await writeFile(temporaryPath, JSON.stringify(data, null, 2), 'utf8');
         await rename(temporaryPath, localDatabasePath);
         return;
@@ -245,26 +258,31 @@ class KVAdapter {
   }
 }
 
-class DB {
+export class DB {
   data: DatabaseSchema | null = null;
   adapter = new KVAdapter();
   env: any;
   lastFetchTime = 0;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(env: any) {
     this.env = env;
   }
 
   async read() {
+    await this.writeQueue;
     this.data = await this.adapter.read(this.env);
     this.lastFetchTime = Date.now();
   }
 
   async write() {
-    if (this.data) {
-      await this.adapter.write(this.data, this.env);
-      this.lastFetchTime = Date.now();
-    }
+    if (!this.data) return;
+    const snapshot = structuredClone(this.data);
+    const writeEnvironment = this.env;
+    const operation = this.writeQueue.then(() => this.adapter.write(snapshot, writeEnvironment));
+    this.writeQueue = operation.catch(() => undefined);
+    await operation;
+    this.lastFetchTime = Date.now();
   }
 }
 

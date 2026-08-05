@@ -281,11 +281,13 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       const directTyreCost = Number(vehicle.tyreCostPerKm);
       const tyreSetCost = Number(vehicle.tyreSetCost);
       const tyreLife = Number(vehicle.expectedTyreLifeKm);
-      const tyrePerKm = Number.isFinite(directTyreCost) && directTyreCost >= 0
+      const tyrePerKm = Number.isFinite(directTyreCost) && directTyreCost > 0
         ? directTyreCost
         : tyreSetCost > 0 && tyreLife > 0
           ? tyreSetCost / tyreLife
-          : (() => { throw new PricingConfigurationError('vehicle tyre cost is missing or invalid'); })();
+          : Number.isFinite(directTyreCost) && directTyreCost >= 0
+            ? directTyreCost
+            : (() => { throw new PricingConfigurationError('vehicle tyre cost is missing or invalid'); })();
       const maintPerKm = configuredNumber('vehicle maintenance cost per distance unit', [vehicle.maintenanceCostPerKm]);
       const cRunning = fuelPerKm + tyrePerKm + maintPerKm;
 
@@ -350,6 +352,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
     surchargeTotal += cost;
     if (cost > 0) surchargeLines.push({ label: "M6 Toll (PSV)", cost });
   }
+
 
   const opDays = calculateOperatingDays(departureDate, returnDate);
   if (opDays > 1) {

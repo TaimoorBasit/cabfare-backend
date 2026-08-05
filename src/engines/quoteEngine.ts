@@ -5,6 +5,13 @@ import { getDatabase } from '../database/db';
 
 export class QuoteValidationError extends Error {}
 
+export function calculateTotalWaitingMinutes(journey: any) {
+  const journeyWaitingMinutes = Math.max(0, Number(journey?.waitingMins) || 0);
+  const stopWaitingMinutes = (Array.isArray(journey?.stops) ? journey.stops : [])
+    .reduce((sum: number, stop: any) => sum + Math.max(0, Number(stop?.wait) || 0), 0);
+  return journeyWaitingMinutes + stopWaitingMinutes;
+}
+
 function calculateOperatingDays(departureDate: string, returnDate?: string) {
   if (!returnDate) return 1;
   const departure = new Date(departureDate);
@@ -49,6 +56,7 @@ export async function generateQuotes(journey: any, env: any) {
       /m6\s*toll/i.test(String(step.html_instructions || ''))
     )
   );
+  const totalWaitingMinutes = calculateTotalWaitingMinutes(journey);
 
   const quotes = [];
 
@@ -85,7 +93,7 @@ export async function generateQuotes(journey: any, env: any) {
       originCoords: journey.wpCoords?.[0] || null,
       destinationCoords: journey.wpCoords?.[journey.wpCoords?.length - 1] || null,
       waypoints: mileageResult.geometry ? [] : [], 
-      waitingMins: journey.waitingMins,
+      waitingMins: totalWaitingMinutes,
       departureDate: journey.departureDate,
       returnDate: journey.returnDate,
       usesM6Toll
@@ -96,6 +104,7 @@ export async function generateQuotes(journey: any, env: any) {
     quotes.push({
       vehicle,
       result: {
+        distanceUnit: data.globalVars?.distanceUnit,
         totalKm: Math.round(mileageResult.totalKm),
         revenueKm: Math.round(mileageResult.liveKm),
         vehicleCount: requiredVehicles,
@@ -113,7 +122,7 @@ export async function generateQuotes(journey: any, env: any) {
         isManualQuote: pricingResult.isManualQuote,
         belowMin: false, 
         opDays: calculateOperatingDays(journey.departureDate, journey.returnDate),
-        totalShiftHrs: Math.round(((mileageResult.totalDurationMinutes + Number(journey.waitingMins || 0)) / 60) * 10) / 10
+        totalShiftHrs: Math.round(((mileageResult.totalDurationMinutes + totalWaitingMinutes) / 60) * 10) / 10
       }
     });
   }

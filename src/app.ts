@@ -1,18 +1,16 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
-import { compress } from 'hono/compress';
-
 const app = new Hono();
 
-app.use('*', compress());
 app.use('*', cors({
   origin: (origin, c) => {
     const configuredOrigins = String(c.env?.ADMIN_ORIGINS || 'http://localhost:3000,http://localhost:3001')
       .split(',')
       .map((value: string) => value.trim())
       .filter(Boolean);
-    return configuredOrigins.includes(origin) ? origin : '';
+    const isLocalDevelopmentOrigin = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+    return configuredOrigins.includes(origin) || isLocalDevelopmentOrigin ? origin : '';
   },
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
