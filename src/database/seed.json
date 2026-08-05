@@ -13,7 +13,7 @@
       "extraMileageRate": 2,
       "nightRateMultiplier": 1,
       "weekendRateMultiplier": 1,
-      "status": "active",
+      "status": "inactive",
       "id": "matrix_1783002000731",
       "scope": "global",
       "distanceBands": [
@@ -35,7 +35,7 @@
       "extraMileageRate": 5.6,
       "nightRateMultiplier": 1.2,
       "weekendRateMultiplier": 1.15,
-      "status": "active",
+      "status": "inactive",
       "id": "matrix_premium_coach",
       "scope": "fleet",
       "distanceBands": [
@@ -2321,6 +2321,9 @@
       "maintenanceCostPerKm": 0.08,
       "tyreSetCost": 1200,
       "expectedTyreLifeKm": 60000
+      ,"ratePerKm": 1.2
+      ,"commercialWeight": 1
+      ,"standingCostPerDay": 150
     },
     {
       "id": "bus",
@@ -2351,6 +2354,9 @@
       "maintenanceCostPerKm": 0.12,
       "tyreSetCost": 2800,
       "expectedTyreLifeKm": 80000
+      ,"ratePerKm": 1.65
+      ,"commercialWeight": 1.08
+      ,"standingCostPerDay": 200
     },
     {
       "id": "coach",
@@ -2384,25 +2390,33 @@
       "expectedTyreLifeKm": 80000,
       "profitMarginPct": 30,
       "fuelPricePerLitre": 1.52,
-      "standingCostPerDay": 99.8076923077,
-      "ratePerKm": 0.7922222222
+      "standingCostPerDay": 260,
+      "ratePerKm": 2.6,
+      "commercialWeight": 1.12
     }
   ],
   "globalVars": {
+    "pricingModelVersion": "supervisor-2025-12",
     "fuelPricePerLitre": 1.52,
     "driverHourlyWage": 18,
     "holidayPayPct": 12.07,
     "profitMarginPct": 30,
-    "driverWageWeekday": 18,
-    "driverWageWeekend": 22,
-    "driverWageHoliday": 25,
-    "marginWeekday": 30,
-    "marginWeekend": 30,
+    "driverWageWeekday": 15,
+    "driverWageWeekend": 20,
+    "driverWageHoliday": 22,
+    "marginWeekday": 20,
+    "marginWeekend": 25,
     "marginHoliday": 30,
-    "overnightCost": 220,
+    "overnightCost": 200,
     "waitingChargePerHour": 35,
     "distanceUnit": "miles",
-    "yardAddress": "Unit 1, Carolean Coaches, Bentley Lane, Walsall WS2 8TL, UK"
+    "yardAddress": "Unit 1, Carolean Coaches, Bentley Lane, Walsall WS2 8TL, UK",
+    "yardLat": 52.5842,
+    "yardLng": -1.9873,
+    "emptyLegThresholdKm": 20,
+    "dualDriverThresholdHours": 13,
+    "waitingWageFactor": 0.75,
+    "customerRangePct": 12
   },
   "surcharges": {
     "m6Toll": 9.5,

@@ -136,7 +136,7 @@ test('matrix scope priority is city, then fleet, then global', () => {
     originName: 'Gamma Terminal',
     destinationName: 'Delta Terminal'
   }), data).finalFare, 200);
-  assert.equal(calculatePriceFromData(makePricingInput({ vehicleId: 'coach' }), data).finalFare, 100);
+  assert.equal(calculatePriceFromData(makePricingInput({ vehicleId: 'coach' }), data).finalFare, 110);
 });
 
 test('seasonal rules honor applicability and highest priority override', () => {
@@ -223,13 +223,15 @@ test('seasonal multipliers apply when no override is configured', () => {
   assert.equal(result.finalFare, 300);
 });
 
-test('manual pricing uses persisted running costs, wage, holiday pay and margin', () => {
+test('cost-model pricing applies vehicle rate, driver wage, margin and customer range', () => {
   const result = calculatePriceFromData(makePricingInput(), makePricingData());
 
-  assert.equal(result.baseFare, 101);
-  assert.equal(result.driverCost, 44);
-  assert.equal(result.finalFare, 122);
-  assert.equal(result.upperBoundFare, result.finalFare);
+  assert.equal(result.baseFare, 174);
+  assert.equal(result.driverCost, 30);
+  assert.equal(result.finalFare, 210);
+  assert.equal(result.upperBoundFare, 235);
+  assert.equal(result.breakdown.distanceCost, 144);
+  assert.equal(result.pricingMethod, 'cost-model');
   assert.equal(result.isManualQuote, true);
 });
 
@@ -238,8 +240,8 @@ test('weekend pricing uses the configured weekend wage and margin', () => {
     departureDate: '2026-08-08T12:00:00'
   }), makePricingData());
 
-  assert.equal(result.driverCost, 55);
-  assert.equal(result.finalFare, 140);
+  assert.equal(result.driverCost, 40);
+  assert.equal(result.finalFare, 230);
 });
 
 test('holiday pricing uses the configured holiday wage and margin', () => {
@@ -258,8 +260,8 @@ test('holiday pricing uses the configured holiday wage and margin', () => {
 
   const result = calculatePriceFromData(makePricingInput(), data);
 
-  assert.equal(result.driverCost, 66);
-  assert.equal(result.finalFare, 160);
+  assert.equal(result.driverCost, 44);
+  assert.equal(result.finalFare, 245);
 });
 
 test('an M6 Toll charge is included only when the routed journey uses it', () => {
@@ -271,24 +273,26 @@ test('an M6 Toll charge is included only when the routed journey uses it', () =>
     withToll.surchargeLines.find((line: any) => /M6 Toll/.test(line.label)),
     { label: 'M6 Toll (PSV)', cost: 6.5 }
   );
-  assert.equal(withToll.finalFare, 129);
+  assert.equal(withToll.finalFare, 215);
 });
 
-test('multi-day pricing adds standing costs, subsistence and accommodation once per night', () => {
+test('multi-day pricing follows the supplied zero standing and overnight policy', () => {
   const result = calculatePriceFromData(makePricingInput({
     totalDurationMinutes: 600,
     departureDate: '2026-08-03T12:00:00',
     returnDate: '2026-08-05T12:00:00'
   }), makePricingData());
 
-  assert.equal(result.baseFare, 284);
-  assert.equal(result.driverCost, 220);
-  assert.equal(result.surchargeTotal, 260);
-  assert.equal(result.finalFare, 653);
+  assert.equal(result.baseFare, 294);
+  assert.equal(result.driverCost, 150);
+  assert.equal(result.surchargeTotal, 0);
+  assert.equal(result.breakdown.standingCost, 0);
+  assert.equal(result.breakdown.overnightCost, 0);
+  assert.equal(result.finalFare, 355);
   assert.equal(result.dualCrew, false);
 });
 
-test('multi-day pricing assigns dual crew when the average daily shift exceeds nine hours', () => {
+test('pricing assigns dual crew at thirteen driving hours', () => {
   const result = calculatePriceFromData(makePricingInput({
     totalDurationMinutes: 1800,
     departureDate: '2026-08-03T12:00:00',
@@ -296,11 +300,11 @@ test('multi-day pricing assigns dual crew when the average daily shift exceeds n
   }), makePricingData());
 
   assert.equal(result.dualCrew, true);
-  assert.equal(result.driverCost, 1320);
-  assert.equal(result.surchargeTotal, 420);
+  assert.equal(result.driverCost, 900);
+  assert.equal(result.surchargeTotal, 0);
 });
 
-test('minimum hire applies the persisted per-unit company overhead', () => {
+test('company overhead remains a profitability metric and is not silently added to route price', () => {
   const data = makePricingData();
   data.annualOverheads = [{ id: 1, label: 'Company overhead', cost: 36500 }];
 
@@ -311,7 +315,37 @@ test('minimum hire applies the persisted per-unit company overhead', () => {
     totalDurationMinutes: 0
   }), data);
 
-  assert.equal(result.finalFare, 28);
+  assert.equal(result.finalFare, 0);
+});
+
+test('supervisor worked examples reproduce the documented customer ranges', () => {
+  const data = makePricingData();
+  data.surcharges = { m6Toll: 0, dartford: 0, ulez: 0, birminghamCaz: 0, driverOvernightSubsistence: 0 };
+  data.vehicles.push(
+    { id: 'luxury-49', name: '49-Seat Luxury', capacity: 49, ratePerKm: 2.6, commercialWeight: 1.12 },
+    { id: 'standard-53', name: '53-Seat Standard', capacity: 53, ratePerKm: 1.9, commercialWeight: 1.12 },
+    { id: 'luxury-53', name: '53-Seat Luxury', capacity: 53, ratePerKm: 2.6, commercialWeight: 1.14 }
+  );
+
+  const oneWay = calculatePriceFromData(makePricingInput({
+    vehicleId: 'luxury-49', liveKm: 195, deadKm: 0,
+    liveDurationMinutes: 138, totalDurationMinutes: 138
+  }), data);
+  assert.deepEqual([oneWay.finalFare, oneWay.upperBoundFare], [730, 815]);
+
+  const sameDay = calculatePriceFromData(makePricingInput({
+    vehicleId: 'standard-53', journeyType: 'return', journeyClass: 'SAME_DAY_RETURN',
+    liveKm: 518, deadKm: 0, liveDurationMinutes: 318, totalDurationMinutes: 318,
+    returnDate: '2026-08-03T20:00:00.000Z'
+  }), data);
+  assert.deepEqual([sameDay.finalFare, sameDay.upperBoundFare], [1445, 1620]);
+
+  const multiDay = calculatePriceFromData(makePricingInput({
+    vehicleId: 'luxury-53', journeyType: 'return', journeyClass: 'MULTI_DAY_RETURN',
+    liveKm: 522, deadKm: 261, liveDurationMinutes: 492, totalDurationMinutes: 492,
+    returnDate: '2026-08-13T12:00:00.000Z'
+  }), data);
+  assert.deepEqual([multiDay.finalFare, multiDay.upperBoundFare], [2955, 3310]);
 });
 
 test('manual pricing rejects missing business configuration instead of using hidden defaults', async (t) => {
@@ -322,28 +356,14 @@ test('manual pricing rejects missing business configuration instead of using hid
     expected: RegExp;
   }> = [
     {
-      name: 'fuel price',
-      mutate: data => { delete data.globalVars.fuelPricePerLitre; },
-      expected: /fuel price per litre/
+      name: 'vehicle rate',
+      mutate: data => { delete data.vehicles[0].ratePerKm; },
+      expected: /commercial rate per km/
     },
     {
-      name: 'fuel consumption',
-      mutate: data => { delete data.vehicles[0].fuelKpl; },
-      expected: /vehicle fuel consumption/
-    },
-    {
-      name: 'tyre costs',
-      mutate: data => {
-        delete data.vehicles[0].tyreCostPerKm;
-        delete data.vehicles[0].tyreSetCost;
-        delete data.vehicles[0].expectedTyreLifeKm;
-      },
-      expected: /vehicle tyre cost/
-    },
-    {
-      name: 'maintenance cost',
-      mutate: data => { delete data.vehicles[0].maintenanceCostPerKm; },
-      expected: /vehicle maintenance cost/
+      name: 'commercial weight',
+      mutate: data => { delete data.vehicles[0].commercialWeight; },
+      expected: /commercial weight/
     },
     {
       name: 'driver wage',
@@ -352,11 +372,6 @@ test('manual pricing rejects missing business configuration instead of using hid
         delete data.globalVars.driverHourlyWage;
       },
       expected: /driver hourly wage/
-    },
-    {
-      name: 'holiday pay',
-      mutate: data => { delete data.globalVars.holidayPayPct; },
-      expected: /holiday pay percentage/
     },
     {
       name: 'profit margin',
@@ -371,18 +386,6 @@ test('manual pricing rejects missing business configuration instead of using hid
       mutate: data => { delete data.surcharges.m6Toll; },
       input: { usesM6Toll: true },
       expected: /M6 Toll surcharge/
-    },
-    {
-      name: 'overnight subsistence',
-      mutate: data => { delete data.surcharges.driverOvernightSubsistence; },
-      input: { returnDate: '2026-08-05T12:00:00' },
-      expected: /driver overnight subsistence/
-    },
-    {
-      name: 'overnight accommodation',
-      mutate: data => { delete data.globalVars.overnightCost; },
-      input: { returnDate: '2026-08-05T12:00:00' },
-      expected: /driver overnight accommodation/
     }
   ];
 

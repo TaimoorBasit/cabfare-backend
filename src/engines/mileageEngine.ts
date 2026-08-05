@@ -64,11 +64,13 @@ export async function calculateMileage(journey: any, env: any) {
 
   const isReturn = journey.journeyType === 'return';
   const distanceUnit = db.data?.globalVars?.distanceUnit;
-  if (distanceUnit !== 'km' && distanceUnit !== 'miles') {
-    throw new MileageUnavailableError('Mileage calculation is unavailable: distance unit is not configured');
-  }
+  if (distanceUnit !== 'km' && distanceUnit !== 'miles') throw new MileageUnavailableError('Mileage calculation is unavailable: distance unit is not configured');
+  const departure = new Date(journey.departureDate);
+  const returning = journey.returnDate ? new Date(journey.returnDate) : null;
+  const sameCalendarDay = Boolean(returning) && departure.toDateString() === returning!.toDateString();
+  const journeyClass = !isReturn ? 'ONE_WAY' : sameCalendarDay ? 'SAME_DAY_RETURN' : 'MULTI_DAY_RETURN';
   const cacheWindow = Math.floor(Date.now() / 900000);
-  const cacheKey = JSON.stringify({ liveOrigin, liveDestination, liveWaypoints, yardLoc, isReturn, distanceUnit, cacheWindow });
+  const cacheKey = JSON.stringify({ liveOrigin, liveDestination, liveWaypoints, yardLoc, journeyClass, distanceUnit, cacheWindow });
   if (mileageCache.has(cacheKey)) {
     return await mileageCache.get(cacheKey);
   }
@@ -79,11 +81,15 @@ export async function calculateMileage(journey: any, env: any) {
     const liveDirections = await getDirections(liveOrigin, liveDestination, liveWaypoints, apiKey);
     let liveDistanceMeters = sumLegs(liveDirections.routes[0].legs, 'distance');
     let liveDurationSeconds = sumLegs(liveDirections.routes[0].legs, 'duration');
-    const divisor = distanceUnit === 'miles' ? 1609.34 : 1000;
+    const divisor = 1000;
 
     const deadOutDirections = await getDirections(yardLoc, liveOrigin, [], apiKey);
-    const deadOutDistanceMeters = sumLegs(deadOutDirections.routes[0].legs, 'distance');
-    const deadOutDurationSeconds = sumLegs(deadOutDirections.routes[0].legs, 'duration');
+    const rawDeadOutDistanceMeters = sumLegs(deadOutDirections.routes[0].legs, 'distance');
+    const rawDeadOutDurationSeconds = sumLegs(deadOutDirections.routes[0].legs, 'duration');
+    const emptyLegThresholdKm = Number(db.data?.globalVars?.emptyLegThresholdKm ?? 20);
+    const includeDeadOut = rawDeadOutDistanceMeters / 1000 >= emptyLegThresholdKm;
+    const deadOutDistanceMeters = includeDeadOut ? rawDeadOutDistanceMeters : 0;
+    const deadOutDurationSeconds = includeDeadOut ? rawDeadOutDurationSeconds : 0;
 
     const isReturn = journey.journeyType === 'return';
     if (isReturn) {
@@ -91,9 +97,15 @@ export async function calculateMileage(journey: any, env: any) {
       liveDurationSeconds *= 2;
     }
 
-    const deadBackDirections = await getDirections(isReturn ? liveOrigin : liveDestination, yardLoc, [], apiKey);
-    const deadBackDistanceMeters = sumLegs(deadBackDirections.routes[0].legs, 'distance');
-    const deadBackDurationSeconds = sumLegs(deadBackDirections.routes[0].legs, 'duration');
+    // Supervisor policy: one-way and same-day returns do not charge a yard return.
+    // A multi-day return charges the destination-to-yard reposition after outbound.
+    let deadBackDistanceMeters = 0;
+    let deadBackDurationSeconds = 0;
+    if (journeyClass === 'MULTI_DAY_RETURN') {
+      const deadBackDirections = await getDirections(liveDestination, yardLoc, [], apiKey);
+      deadBackDistanceMeters = sumLegs(deadBackDirections.routes[0].legs, 'distance');
+      deadBackDurationSeconds = sumLegs(deadBackDirections.routes[0].legs, 'duration');
+    }
 
     const liveKm = liveDistanceMeters / divisor;
     const deadKm = (deadOutDistanceMeters + deadBackDistanceMeters) / divisor;
@@ -104,6 +116,9 @@ export async function calculateMileage(journey: any, env: any) {
       totalKm: liveKm + deadKm,
       liveDurationMinutes: liveDurationSeconds / 60,
       totalDurationMinutes: (liveDurationSeconds + deadOutDurationSeconds + deadBackDurationSeconds) / 60,
+      journeyClass,
+      emptyLegApplied: includeDeadOut,
+      emptyLegThresholdKm,
       geometry: liveDirections.routes[0].overview_polyline.points,
       legs: liveDirections.routes[0].legs
     };

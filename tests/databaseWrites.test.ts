@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DB } from '../src/database/db';
+import { DB, applySupervisorPricingMigration } from '../src/database/db';
 
 test('database writes are serialized and preserve the newest snapshot', async () => {
   const database = new DB({});
@@ -46,4 +46,19 @@ test('Cloudflare KV is used as persistent database storage', async () => {
   const reloaded = new DB({ CABFARE_DB: namespace });
   await reloaded.read();
   assert.equal(reloaded.data?.bookings?.[0]?.id, 'BK-PERSISTED');
+});
+
+test('supervisor pricing migration preserves operational records', () => {
+  const data: any = {
+    users: [{ id: 'user-1' }], bookings: [{ id: 'booking-1' }], quotes: [{ id: 'quote-1' }],
+    vehicles: [{ id: 'coach', name: 'Premium Coach' }],
+    pricingMatrix: [{ id: 'legacy', status: 'active' }], globalVars: {}
+  };
+  assert.equal(applySupervisorPricingMigration(data), true);
+  assert.deepEqual(data.users, [{ id: 'user-1' }]);
+  assert.deepEqual(data.bookings, [{ id: 'booking-1' }]);
+  assert.deepEqual(data.quotes, [{ id: 'quote-1' }]);
+  assert.equal(data.vehicles[0].ratePerKm, 2.6);
+  assert.equal(data.pricingMatrix[0].status, 'inactive');
+  assert.equal(applySupervisorPricingMigration(data), false);
 });

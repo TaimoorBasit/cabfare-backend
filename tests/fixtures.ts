@@ -5,6 +5,8 @@ export function makePricingData() {
         id: 'minibus',
         name: 'Executive Minibus',
         capacity: 16,
+        ratePerKm: 1.2,
+        commercialWeight: 1,
         fleetCount: 3,
         utilisationDays: 365,
         annualCosts: [{ id: 1, label: 'Fixed costs', cost: 3650 }],
@@ -16,6 +18,8 @@ export function makePricingData() {
         id: 'coach',
         name: 'Premium Coach',
         capacity: 50,
+        ratePerKm: 2.6,
+        commercialWeight: 1.12,
         fleetCount: 1,
         utilisationDays: 365,
         annualCosts: [{ id: 1, label: 'Fixed costs', cost: 7300 }],
@@ -32,9 +36,9 @@ export function makePricingData() {
     annualOverheads: [],
     globalVars: {
       fuelPricePerLitre: 1.5,
-      driverWageWeekday: 20,
-      driverWageWeekend: 25,
-      driverWageHoliday: 30,
+      driverWageWeekday: 15,
+      driverWageWeekend: 20,
+      driverWageHoliday: 22,
       holidayPayPct: 10,
       marginWeekday: 20,
       marginWeekend: 25,
@@ -43,6 +47,10 @@ export function makePricingData() {
       waitingChargePerHour: 50,
       extraLuggageProfitPct: 5,
       distanceUnit: 'km'
+      ,emptyLegThresholdKm: 20
+      ,dualDriverThresholdHours: 13
+      ,waitingWageFactor: 0.75
+      ,customerRangePct: 12
     },
     surcharges: {
       m6Toll: 6.5,

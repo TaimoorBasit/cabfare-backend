@@ -96,6 +96,7 @@ export async function generateQuotes(journey: any, env: any) {
       waitingMins: totalWaitingMinutes,
       departureDate: journey.departureDate,
       returnDate: journey.returnDate,
+      journeyClass: mileageResult.journeyClass,
       usesM6Toll
     }, env);
 
@@ -105,8 +106,13 @@ export async function generateQuotes(journey: any, env: any) {
       vehicle,
       result: {
         distanceUnit: data.globalVars?.distanceUnit,
-        totalKm: Math.round(mileageResult.totalKm),
-        revenueKm: Math.round(mileageResult.liveKm),
+        totalKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.totalKm / 1.60934 : mileageResult.totalKm),
+        revenueKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.liveKm / 1.60934 : mileageResult.liveKm),
+        chargedKm: Math.round(mileageResult.totalKm),
+        customerKm: Math.round(mileageResult.liveKm),
+        deadKm: Math.round(mileageResult.deadKm),
+        journeyClass: mileageResult.journeyClass,
+        emptyLegApplied: mileageResult.emptyLegApplied,
         vehicleCount: requiredVehicles,
         totalSeatCapacity: usableCapacity * requiredVehicles,
         finalPrice: pricingResult.finalFare * requiredVehicles,
@@ -123,6 +129,8 @@ export async function generateQuotes(journey: any, env: any) {
         belowMin: false, 
         opDays: calculateOperatingDays(journey.departureDate, journey.returnDate),
         totalShiftHrs: Math.round(((mileageResult.totalDurationMinutes + totalWaitingMinutes) / 60) * 10) / 10
+        ,pricingMethod: pricingResult.pricingMethod
+        ,breakdown: pricingResult.breakdown
       }
     });
   }

@@ -18,6 +18,7 @@ interface PricingInput {
   waitingMins: number;
   departureDate: string;
   returnDate?: string;
+  journeyClass?: 'ONE_WAY' | 'SAME_DAY_RETURN' | 'MULTI_DAY_RETURN' | 'SPLIT_RETURN';
   usesM6Toll?: boolean;
 }
 
@@ -82,6 +83,10 @@ function calculateOperatingDays(departureDate: string, returnDate?: string) {
   const departureDay = Date.UTC(departureYear, departureMonth - 1, departureDateOfMonth);
   const returnDay = Date.UTC(returnYear, returnMonth - 1, returnDateOfMonth);
   return Math.max(1, Math.round((returnDay - departureDay) / 86400000) + 1);
+}
+
+function roundToNearestFive(value: number) {
+  return Math.round(value / 5) * 5;
 }
 
 function getAnnualFixedCost(vehicle: any) {
@@ -189,6 +194,12 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   let preSurchargeBase = 0;
   let driverCost = 0;
   let dualCrew = false;
+  let distanceCost = 0;
+  let standingCost = 0;
+  let overnightCost = 0;
+  let appliedMarginPct = 0;
+  let appliedDriverRate = 0;
+  let waitingHours = 0;
 
   if (template) {
     baseFare = configuredNumber('route template price', [template.price]);
@@ -260,53 +271,31 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
       const totalKm = liveKm + deadKm;
       const gv = data.globalVars || {};
-      const drivHrs = input.totalDurationMinutes / 60; 
-      const waitHrs = (Number(waitingMins) || 0) / 60;
-      const shiftHrs = drivHrs + waitHrs;
-
-      const opDays = calculateOperatingDays(departureDate, returnDate);
-
-      const totalAnnualFixed = getAnnualFixedCost(vehicle);
-      const fleetCount = configuredNumber('vehicle fleet count', [vehicle.fleetCount], { positive: true });
-      const annualFixed = totalAnnualFixed / fleetCount;
-      const utilisationDays = configuredNumber('vehicle utilisation days', [vehicle.utilisationDays], { positive: true });
-      const calculatedStanding = annualFixed / utilisationDays;
-      const rStanding = totalAnnualFixed > 0
-        ? calculatedStanding
-        : configuredNumber('vehicle standing cost per day', [vehicle.standingCostPerDay]);
-
-      const fuelPrice = configuredNumber('fuel price per litre', [vehicle.fuelPricePerLitre, gv.fuelPricePerLitre], { positive: true });
-      const fuelKpl = configuredNumber('vehicle fuel consumption', [vehicle.fuelKpl], { positive: true });
-      const fuelPerKm = fuelPrice / fuelKpl;
-      const directTyreCost = Number(vehicle.tyreCostPerKm);
-      const tyreSetCost = Number(vehicle.tyreSetCost);
-      const tyreLife = Number(vehicle.expectedTyreLifeKm);
-      const tyrePerKm = Number.isFinite(directTyreCost) && directTyreCost > 0
-        ? directTyreCost
-        : tyreSetCost > 0 && tyreLife > 0
-          ? tyreSetCost / tyreLife
-          : Number.isFinite(directTyreCost) && directTyreCost >= 0
-            ? directTyreCost
-            : (() => { throw new PricingConfigurationError('vehicle tyre cost is missing or invalid'); })();
-      const maintPerKm = configuredNumber('vehicle maintenance cost per distance unit', [vehicle.maintenanceCostPerKm]);
-      const cRunning = fuelPerKm + tyrePerKm + maintPerKm;
+      const drivingHours = input.totalDurationMinutes / 60;
+      const journeyClass = input.journeyClass || (!returnDate ? 'ONE_WAY' : calculateOperatingDays(departureDate, returnDate) === 1 ? 'SAME_DAY_RETURN' : 'MULTI_DAY_RETURN');
+      const requestedWaitingHours = (Number(waitingMins) || 0) / 60;
+      waitingHours = journeyClass === 'SAME_DAY_RETURN' ? Math.max(1, requestedWaitingHours) : requestedWaitingHours;
+      const vehicleRate = configuredNumber('vehicle commercial rate per km', [vehicle.ratePerKm], { positive: true });
+      distanceCost = totalKm * vehicleRate;
 
       const configuredDriverWage = isHolidayDeparture
         ? gv.driverWageHoliday
         : isWeekendDeparture
           ? gv.driverWageWeekend
           : gv.driverWageWeekday;
-      const driverWage = configuredNumber('driver hourly wage', [vehicle.driverHourlyWage, configuredDriverWage, gv.driverHourlyWage], { positive: true });
-      const holPayPct = configuredNumber('holiday pay percentage', [vehicle.holidayPayPct, gv.holidayPayPct]);
-      
-      
-      const averageDailyShiftHrs = shiftHrs / opDays;
-      dualCrew = averageDailyShiftHrs > 9;
-      const baseWage = driverWage * shiftHrs;
-      const holPay = baseWage * (holPayPct / 100);
-      driverCost = (baseWage + holPay) * (dualCrew ? 2 : 1);
+      const driverWage = configuredNumber('driver hourly wage', [configuredDriverWage, gv.driverHourlyWage], { positive: true });
+      appliedDriverRate = driverWage;
+      const dualDriverThreshold = configuredNumber('two-driver threshold', [gv.dualDriverThresholdHours ?? 13], { positive: true });
+      const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor ?? 0.75], { positive: true });
+      dualCrew = drivingHours >= dualDriverThreshold;
+      const driverCount = dualCrew ? 2 : 1;
+      driverCost = ((drivingHours * driverWage) + (waitingHours * driverWage * waitingFactor)) * driverCount;
 
-      const rawSubtotal = (rStanding * opDays) + (cRunning * totalKm) + driverCost;
+      // The supplied policy sets quote standing and accommodation to zero for
+      // every defined journey class; their configured rates remain reporting inputs.
+      standingCost = 0;
+      overnightCost = 0;
+      const rawSubtotal = distanceCost + driverCost + standingCost + overnightCost;
 
       baseFare = rawSubtotal;
       preSurchargeBase = baseFare;
@@ -354,20 +343,6 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   }
 
 
-  const opDays = calculateOperatingDays(departureDate, returnDate);
-  if (opDays > 1) {
-    const subsistenceRate = configuredNumber('driver overnight subsistence', [surcharges.driverOvernightSubsistence]);
-    const sub = subsistenceRate * (opDays - 1);
-    surchargeTotal += sub;
-    if (sub > 0) surchargeLines.push({ label: `Driver subsistence ×${opDays-1}`, cost: sub });
-    const accommodationPerDriver = configuredNumber('driver overnight accommodation', [data.globalVars?.overnightCost]);
-    const accommodation = accommodationPerDriver * (opDays - 1) * (dualCrew ? 2 : 1);
-    surchargeTotal += accommodation;
-    if (accommodation > 0) {
-      surchargeLines.push({ label: `Driver overnight accommodation ×${opDays - 1}`, cost: accommodation });
-    }
-  }
-
   let finalFare = preSurchargeBase + surchargeTotal;
   const gv = data.globalVars || {};
 
@@ -378,21 +353,13 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       : isWeekendDeparture
         ? gv.marginWeekend
         : gv.marginWeekday;
-    const vehicleProfitPct = configuredNumber('profit margin percentage', [vehicle?.profitMarginPct, configuredMargin, gv.profitMarginPct]);
-    const profitMargin = vehicleProfitPct / 100;
-    finalFare = finalFare * (1 + profitMargin);
-
-    const eco = fleetEconomics(data);
-    const vEco = eco.vehicleBreakdown.find((b: any) => b.id === vehicleId);
-    const minHire = (vEco ? vEco.minHirePerDay : 0) * opDays;
-
-    if (finalFare < minHire) {
-      finalFare = minHire;
-    }
+    appliedMarginPct = configuredNumber('profit margin percentage', [configuredMargin, gv.profitMarginPct]);
+    const costModelWeight = configuredNumber('vehicle commercial weight', [vehicle.commercialWeight], { positive: true });
+    finalFare = (preSurchargeBase * costModelWeight * (1 + appliedMarginPct / 100)) + surchargeTotal;
   }
 
   const commercialWeight = Number(vehicle.commercialWeight);
-  if (Number.isFinite(commercialWeight) && commercialWeight > 0) {
+  if (!isManualQuote && Number.isFinite(commercialWeight) && commercialWeight > 0) {
     finalFare *= commercialWeight;
   }
 
@@ -447,9 +414,9 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
     }
   }
 
-    // Do not invent an estimate range or hidden rounding uplift. The configured
-    // calculation is the price returned to the customer.
-    const upperBoundFare = finalFare;
+    const roundedFinalFare = roundToNearestFive(finalFare);
+    const customerRangePct = configuredNumber('customer price range percentage', [gv.customerRangePct ?? 12]);
+    const upperBoundFare = roundToNearestFive(finalFare * (1 + customerRangePct / 100));
 
     return {
       baseFare: Math.round(baseFare),
@@ -461,8 +428,21 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       surchargeLines,
       driverCost: Math.round(driverCost),
       dualCrew,
-      finalFare: Math.round(finalFare),
+      finalFare: roundedFinalFare,
       upperBoundFare: Math.round(upperBoundFare),
-      isManualQuote
+      isManualQuote,
+      pricingMethod: template ? 'fixed-route' : isManualQuote ? 'cost-model' : 'pricing-matrix',
+      breakdown: {
+        distanceCost: Math.round(distanceCost * 100) / 100,
+        driverCost: Math.round(driverCost * 100) / 100,
+        standingCost,
+        overnightCost,
+        commercialWeight: Number.isFinite(commercialWeight) && commercialWeight > 0 ? commercialWeight : 1,
+        marginPct: appliedMarginPct,
+        driverRate: appliedDriverRate,
+        waitingHours,
+        surchargeTotal: Math.round(surchargeTotal * 100) / 100,
+        customerRangePct
+      }
     };
 }
