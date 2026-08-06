@@ -201,6 +201,29 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   let appliedDriverRate = 0;
   let waitingHours = 0;
 
+  const gv = data.globalVars || {};
+  const totalKm = liveKm + deadKm;
+  const vehicleRate = configuredNumber('vehicle commercial rate per km', [vehicle.ratePerKm], { positive: true });
+  distanceCost = totalKm * vehicleRate;
+
+  const drivingHours = input.totalDurationMinutes / 60;
+  const journeyClass = input.journeyClass || (!returnDate ? 'ONE_WAY' : calculateOperatingDays(departureDate, returnDate) === 1 ? 'SAME_DAY_RETURN' : 'MULTI_DAY_RETURN');
+  const requestedWaitingHours = (Number(waitingMins) || 0) / 60;
+  waitingHours = journeyClass === 'SAME_DAY_RETURN' ? Math.max(1, requestedWaitingHours) : requestedWaitingHours;
+  
+  const configuredDriverWage = isHolidayDeparture
+    ? gv.driverWageHoliday
+    : isWeekendDeparture
+      ? gv.driverWageWeekend
+      : gv.driverWageWeekday;
+  const driverWage = configuredNumber('driver hourly wage', [configuredDriverWage, gv.driverHourlyWage], { positive: true });
+  appliedDriverRate = driverWage;
+  const dualDriverThreshold = configuredNumber('two-driver threshold', [gv.dualDriverThresholdHours ?? 13], { positive: true });
+  const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor ?? 0.75], { positive: true });
+  dualCrew = drivingHours >= dualDriverThreshold;
+  const driverCount = dualCrew ? 2 : 1;
+  driverCost = ((drivingHours * driverWage) + (waitingHours * driverWage * waitingFactor)) * driverCount;
+
   if (template) {
     baseFare = configuredNumber('route template price', [template.price]);
     const templateWaitingRate = Number(waitingMins) > 0
@@ -269,28 +292,6 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
       isManualQuote = true;
 
-      const totalKm = liveKm + deadKm;
-      const gv = data.globalVars || {};
-      const drivingHours = input.totalDurationMinutes / 60;
-      const journeyClass = input.journeyClass || (!returnDate ? 'ONE_WAY' : calculateOperatingDays(departureDate, returnDate) === 1 ? 'SAME_DAY_RETURN' : 'MULTI_DAY_RETURN');
-      const requestedWaitingHours = (Number(waitingMins) || 0) / 60;
-      waitingHours = journeyClass === 'SAME_DAY_RETURN' ? Math.max(1, requestedWaitingHours) : requestedWaitingHours;
-      const vehicleRate = configuredNumber('vehicle commercial rate per km', [vehicle.ratePerKm], { positive: true });
-      distanceCost = totalKm * vehicleRate;
-
-      const configuredDriverWage = isHolidayDeparture
-        ? gv.driverWageHoliday
-        : isWeekendDeparture
-          ? gv.driverWageWeekend
-          : gv.driverWageWeekday;
-      const driverWage = configuredNumber('driver hourly wage', [configuredDriverWage, gv.driverHourlyWage], { positive: true });
-      appliedDriverRate = driverWage;
-      const dualDriverThreshold = configuredNumber('two-driver threshold', [gv.dualDriverThresholdHours ?? 13], { positive: true });
-      const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor ?? 0.75], { positive: true });
-      dualCrew = drivingHours >= dualDriverThreshold;
-      const driverCount = dualCrew ? 2 : 1;
-      driverCost = ((drivingHours * driverWage) + (waitingHours * driverWage * waitingFactor)) * driverCount;
-
       // The supplied policy sets quote standing and accommodation to zero for
       // every defined journey class; their configured rates remain reporting inputs.
       standingCost = 0;
@@ -344,7 +345,6 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
 
   let finalFare = preSurchargeBase + surchargeTotal;
-  const gv = data.globalVars || {};
 
   if (isManualQuote) {
 
