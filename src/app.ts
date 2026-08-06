@@ -4,14 +4,7 @@ import { cors } from 'hono/cors';
 const app = new Hono();
 
 app.use('*', cors({
-  origin: (origin, c) => {
-    const configuredOrigins = String(c.env?.ADMIN_ORIGINS || 'http://localhost:3000,http://localhost:3001')
-      .split(',')
-      .map((value: string) => value.trim())
-      .filter(Boolean);
-    const isLocalDevelopmentOrigin = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
-    return configuredOrigins.includes(origin) || isLocalDevelopmentOrigin ? origin : '';
-  },
+  origin: '*',
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   maxAge: 86400

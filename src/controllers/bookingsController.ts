@@ -1,5 +1,6 @@
 type Request = any; type Response = any;
 import { addActivity, getDatabase } from '../database/db';
+import { sendAdminNotificationEmail, sendQuotationEmail } from '../services/emailService';
 
 const allowedStatuses = new Set([
   'new', 'pending', 'draft', 'sent', 'quoted', 'accepted', 'confirmed',
@@ -83,6 +84,8 @@ export const postHandler = async (req: Request, res: Response) => {
     addActivity(db, 'booking', `New booking ${newBooking.id} received`);
     await db.write();
 
+    sendAdminNotificationEmail(newBooking, req.env).catch(console.error);
+
     return res.status(201).json({ success: true, booking: newBooking });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
@@ -103,6 +106,8 @@ export const putHandler = async (req: Request, res: Response) => {
     if (index < 0) return res.status(404).json({ error: 'Booking not found' });
 
     const existing = db.data.bookings[index];
+    const statusChangedToSent = (payload.status === 'sent' || payload.status === 'quoted') && existing.status !== payload.status;
+    
     const updatedBooking = {
       ...existing,
       ...payload,
@@ -116,6 +121,11 @@ export const putHandler = async (req: Request, res: Response) => {
     db.data.bookings[index] = updatedBooking;
     addActivity(db, 'booking', `Booking ${id} updated`);
     await db.write();
+
+    if (statusChangedToSent) {
+      sendQuotationEmail(updatedBooking, req.env).catch(console.error);
+    }
+
     return res.json({ success: true, booking: updatedBooking });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Unable to update booking' });
