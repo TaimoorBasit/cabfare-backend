@@ -188,7 +188,12 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
   // 2. Distances & Distance Cost
   const totalKm = liveKm + deadKm;
-  const vehicleRate = configuredNumber('vehicle commercial rate per km', [vehicle.ratePerKm], { positive: true });
+  const globalFuelPrice = globals?.fuelPricePerLitre ?? 1.52;
+  const fuelPrice = vehicle.fuelPricePerLitre ?? globalFuelPrice;
+  const fuelPerKm = fuelPrice / (vehicle.fuelKpl || 1);
+  const maintPerKm = (vehicle.maintenanceSetCost || 0) / (vehicle.expectedMaintenanceLifeKm || 1);
+  const tyrePerKm = (vehicle.tyreSetCost || 0) / (vehicle.expectedTyreLifeKm || 1);
+  const vehicleRate = fuelPerKm + maintPerKm + tyrePerKm;
   const distanceCost = totalKm * vehicleRate;
 
   // 3. Driver Cost
