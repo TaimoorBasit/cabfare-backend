@@ -1,4 +1,4 @@
-type Request = any; type Response = any; type NextFunction = any;
+﻿type Request = any; type Response = any; type NextFunction = any;
 import { addActivity, getDatabase } from '../database/db';
 
 const numericGlobalFields = [
@@ -79,7 +79,7 @@ export const postHandler = async (req: Request, res: Response) => {
   if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
   const config = req.body;
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
-    return res.status(400).json({ error: 'Configuration payload must be an object' });
+     return res.status(400).json({ error: 'Configuration payload must be an object' });
   }
 
   // 1. Heal vehicles
@@ -199,52 +199,52 @@ export const postHandler = async (req: Request, res: Response) => {
   }
 
   if (config.vehicles !== undefined && !Array.isArray(config.vehicles)) {
-    return res.status(400).json({ error: 'Vehicles must be an array' });
+     return res.status(400).json({ error: 'Vehicles must be an array' });
   }
   if (config.globalVars !== undefined && (typeof config.globalVars !== 'object' || Array.isArray(config.globalVars))) {
-    return res.status(400).json({ error: 'Global variables must be an object' });
+     return res.status(400).json({ error: 'Global variables must be an object' });
   }
   const invalidVehicle = config.vehicles?.map(validateVehicle).find(Boolean);
   if (invalidVehicle) {
-    return res.status(400).json({ error: invalidVehicle });
+     return res.status(400).json({ error: invalidVehicle });
   }
   const badGlobalFields = invalidNumericFields(config.globalVars, numericGlobalFields);
-  if (badGlobalFields.length) return res.status(400).json({ error: `Invalid numeric settings: ${badGlobalFields.join(', ')}` });
+  if (badGlobalFields.length)  return res.status(400).json({ error: `Invalid numeric settings: ${badGlobalFields.join(', ')}` });
   const negativeGlobalFields = nonNegativeGlobalFields.filter(field => config.globalVars?.[field] !== undefined && Number(config.globalVars[field]) < 0);
-  if (negativeGlobalFields.length) return res.status(400).json({ error: `Settings cannot be negative: ${negativeGlobalFields.join(', ')}` });
+  if (negativeGlobalFields.length)  return res.status(400).json({ error: `Settings cannot be negative: ${negativeGlobalFields.join(', ')}` });
   if (config.globalVars?.distanceUnit !== undefined && !['km', 'miles'].includes(config.globalVars.distanceUnit)) {
-    return res.status(400).json({ error: 'Distance unit must be km or miles' });
+     return res.status(400).json({ error: 'Distance unit must be km or miles' });
   }
   if (config.globalVars?.yardLat !== undefined && (Number(config.globalVars.yardLat) < -90 || Number(config.globalVars.yardLat) > 90)) {
-    return res.status(400).json({ error: 'Yard latitude must be between -90 and 90' });
+     return res.status(400).json({ error: 'Yard latitude must be between -90 and 90' });
   }
   if (config.globalVars?.yardLng !== undefined && (Number(config.globalVars.yardLng) < -180 || Number(config.globalVars.yardLng) > 180)) {
-    return res.status(400).json({ error: 'Yard longitude must be between -180 and 180' });
+     return res.status(400).json({ error: 'Yard longitude must be between -180 and 180' });
   }
   if (config.surcharges !== undefined && (typeof config.surcharges !== 'object' || Array.isArray(config.surcharges) ||
     Object.entries(config.surcharges).some(([, value]) => !Number.isFinite(Number(value)) || Number(value) < 0))) {
-    return res.status(400).json({ error: 'Every surcharge must be a non-negative number' });
+     return res.status(400).json({ error: 'Every surcharge must be a non-negative number' });
   }
   if (config.annualOverheads && (!Array.isArray(config.annualOverheads) || config.annualOverheads.some((item: any) => !item?.label || !Number.isFinite(Number(item.cost)) || Number(item.cost) < 0))) {
-    return res.status(400).json({ error: 'Annual overhead items require a label and non-negative cost' });
+     return res.status(400).json({ error: 'Annual overhead items require a label and non-negative cost' });
   }
   const vehicleIds = new Set<string>((config.vehicles || db.data?.vehicles || []).map((vehicle: any) => String(vehicle.id)));
   if (config.blockedDates !== undefined && !Array.isArray(config.blockedDates)) {
-    return res.status(400).json({ error: 'Blocked dates must be an array' });
+     return res.status(400).json({ error: 'Blocked dates must be an array' });
   }
   const blockedDateError = config.blockedDates ? validateBlockedDates(config.blockedDates, vehicleIds) : null;
-  if (blockedDateError) return res.status(400).json({ error: blockedDateError });
+  if (blockedDateError)  return res.status(400).json({ error: blockedDateError });
   if (config.operatorDetails !== undefined && (typeof config.operatorDetails !== 'object' || Array.isArray(config.operatorDetails))) {
-    return res.status(400).json({ error: 'Operator details must be an object' });
+     return res.status(400).json({ error: 'Operator details must be an object' });
   }
   if (config.operatorDetails) {
     const requiredOperatorFields = ['companyName', 'operatorLicence', 'depotPostcode', 'notificationEmail'];
     const missingOperatorFields = requiredOperatorFields.filter(field => !String(config.operatorDetails[field] || '').trim());
     if (missingOperatorFields.length) {
-      return res.status(400).json({ error: `Operator details cannot be blank: ${missingOperatorFields.join(', ')}` });
+       return res.status(400).json({ error: `Operator details cannot be blank: ${missingOperatorFields.join(', ')}` });
     }
     if (!/^\S+@\S+\.\S+$/.test(String(config.operatorDetails.notificationEmail))) {
-      return res.status(400).json({ error: 'Notification email is invalid' });
+       return res.status(400).json({ error: 'Notification email is invalid' });
     }
   }
   if (db.data) {
@@ -274,3 +274,5 @@ export const postHandler = async (req: Request, res: Response) => {
   }
   return res.json({ success: true });
 }
+
+
