@@ -117,6 +117,8 @@ export interface DatabaseSchema {
     driverHourlyWage?: number;
     holidayPayPct?: number;
     profitMarginPct?: number;
+    netMarginPct?: number;
+    netProfitTarget?: number;
     extraLuggageProfitPct?: number;
     emptyLegThresholdKm?: number;
     dualDriverThresholdHours?: number;

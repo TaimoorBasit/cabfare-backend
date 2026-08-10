@@ -2407,6 +2407,8 @@
     "marginWeekday": 20,
     "marginWeekend": 25,
     "marginHoliday": 30,
+    "netMarginPct": 0,
+    "netProfitTarget": 0,
     "overnightCost": 200,
     "waitingChargePerHour": 35,
     "distanceUnit": "miles",

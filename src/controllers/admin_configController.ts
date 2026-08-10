@@ -5,14 +5,15 @@ const numericGlobalFields = [
   'driverWageWeekday', 'driverWageWeekend', 'driverWageHoliday',
   'marginWeekday', 'marginWeekend', 'marginHoliday', 'overnightCost',
   'waitingChargePerHour', 'yardLat', 'yardLng', 'fuelPricePerLitre',
-  'driverHourlyWage', 'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct'
+  'driverHourlyWage', 'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct',
+  'netMarginPct', 'netProfitTarget'
 ];
 
 const nonNegativeGlobalFields = [
   'driverWageWeekday', 'driverWageWeekend', 'driverWageHoliday',
   'marginWeekday', 'marginWeekend', 'marginHoliday', 'overnightCost',
   'waitingChargePerHour', 'fuelPricePerLitre', 'driverHourlyWage',
-  'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct'
+  'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct', 'netMarginPct', 'netProfitTarget'
 ];
 
 const positiveVehicleFields = ['capacity', 'fleetCount', 'utilisationDays', 'fuelKpl', 'expectedTyreLifeKm'];
@@ -212,6 +213,11 @@ export const postHandler = async (req: Request, res: Response) => {
   if (badGlobalFields.length)  return res.status(400).json({ error: `Invalid numeric settings: ${badGlobalFields.join(', ')}` });
   const negativeGlobalFields = nonNegativeGlobalFields.filter(field => config.globalVars?.[field] !== undefined && Number(config.globalVars[field]) < 0);
   if (negativeGlobalFields.length)  return res.status(400).json({ error: `Settings cannot be negative: ${negativeGlobalFields.join(', ')}` });
+  const percentageMarginFields = ['marginWeekday', 'marginWeekend', 'marginHoliday', 'profitMarginPct', 'netMarginPct'];
+  const invalidPercentageMargin = percentageMarginFields.find(field => config.globalVars?.[field] !== undefined && Number(config.globalVars[field]) >= 100);
+  if (invalidPercentageMargin) {
+     return res.status(400).json({ error: `${invalidPercentageMargin} must be less than 100%` });
+  }
   if (config.globalVars?.distanceUnit !== undefined && !['km', 'miles'].includes(config.globalVars.distanceUnit)) {
      return res.status(400).json({ error: 'Distance unit must be km or miles' });
   }
