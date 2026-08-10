@@ -6,14 +6,16 @@ const numericGlobalFields = [
   'marginWeekday', 'marginWeekend', 'marginHoliday', 'overnightCost',
   'waitingChargePerHour', 'yardLat', 'yardLng', 'fuelPricePerLitre',
   'driverHourlyWage', 'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct',
-  'netMarginPct', 'netProfitTarget'
+  'netMarginPct', 'netProfitTarget', 'dualDriverThresholdHours', 'waitingWageFactor',
+  'customerRangePct'
 ];
 
 const nonNegativeGlobalFields = [
   'driverWageWeekday', 'driverWageWeekend', 'driverWageHoliday',
   'marginWeekday', 'marginWeekend', 'marginHoliday', 'overnightCost',
   'waitingChargePerHour', 'fuelPricePerLitre', 'driverHourlyWage',
-  'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct', 'netMarginPct', 'netProfitTarget'
+  'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct', 'netMarginPct', 'netProfitTarget',
+  'dualDriverThresholdHours', 'waitingWageFactor', 'customerRangePct'
 ];
 
 const positiveVehicleFields = ['capacity', 'fleetCount', 'utilisationDays', 'fuelKpl', 'expectedTyreLifeKm'];

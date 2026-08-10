@@ -136,7 +136,7 @@ test('matrix scope priority is city, then fleet, then global', () => {
     originName: 'Gamma Terminal',
     destinationName: 'Delta Terminal'
   }), data).finalFare, 200);
-  assert.equal(calculatePriceFromData(makePricingInput({ vehicleId: 'coach' }), data).finalFare, 110);
+  assert.equal(calculatePriceFromData(makePricingInput({ vehicleId: 'coach' }), data).finalFare, 385);
 });
 
 test('seasonal rules honor applicability and highest priority override', () => {
@@ -273,7 +273,7 @@ test('an M6 Toll charge is included only when the routed journey uses it', () =>
     withToll.surchargeLines.find((line: any) => /M6 Toll/.test(line.label)),
     { label: 'M6 Toll (PSV)', cost: 6.5 }
   );
-  assert.equal(withToll.finalFare, 215);
+  assert.equal(withToll.finalFare, 220);
 });
 
 test('multi-day pricing follows the supplied zero standing and overnight policy', () => {
@@ -292,7 +292,7 @@ test('multi-day pricing follows the supplied zero standing and overnight policy'
   assert.equal(result.dualCrew, false);
 });
 
-test('pricing assigns dual crew at thirteen driving hours', () => {
+test('pricing assigns enough drivers for the nine-hour daily driving limit', () => {
   const result = calculatePriceFromData(makePricingInput({
     totalDurationMinutes: 1800,
     departureDate: '2026-08-03T12:00:00',
@@ -300,11 +300,13 @@ test('pricing assigns dual crew at thirteen driving hours', () => {
   }), makePricingData());
 
   assert.equal(result.dualCrew, true);
-  assert.equal(result.driverCost, 900);
+  assert.equal(result.driverCost, 1035);
+  assert.equal(result.breakdown.driverCount, 2);
+  assert.equal(result.breakdown.mandatoryBreakHours, 4.5);
   assert.equal(result.surchargeTotal, 0);
 });
 
-test('company overhead remains a profitability metric and is not silently added to route price', () => {
+test('company overhead is covered by the minimum profitable fare', () => {
   const data = makePricingData();
   data.annualOverheads = [{ id: 1, label: 'Company overhead', cost: 36500 }];
 
@@ -315,7 +317,33 @@ test('company overhead remains a profitability metric and is not silently added 
     totalDurationMinutes: 0
   }), data);
 
-  assert.equal(result.finalFare, 0);
+  assert.equal(result.finalFare, 30);
+  assert.ok(result.finalFare >= result.breakdown.profitFloor);
+});
+
+test('customer waiting is charged separately and never replaces mandatory breaks', () => {
+  const result = calculatePriceFromData(makePricingInput({
+    journeyType: 'return',
+    returnDate: '2026-08-03T20:00:00.000Z',
+    totalDurationMinutes: 420,
+    waitingMins: 120
+  }), makePricingData());
+
+  assert.equal(result.waitingCharge, 100);
+  assert.equal(result.breakdown.waitingHours, 2);
+  assert.equal(result.breakdown.mandatoryBreakHours, 0.75);
+});
+
+test('loss-making fixed prices are raised only to the shared profit floor', () => {
+  const data = makePricingData();
+  data.routeTemplates.push({
+    id: 'loss-template', pickupArea: 'Alpha Terminal', dropArea: 'Beta Terminal',
+    vehicleId: 'coach', tripType: 'one-way', price: 100, waitingChargePerHour: 50, radiusKm: 15
+  });
+
+  const result = calculatePriceFromData(makePricingInput({ vehicleId: 'coach' }), data);
+  assert.equal(result.finalFare, 385);
+  assert.ok(result.finalFare >= result.breakdown.profitFloor);
 });
 
 test('supervisor worked examples reproduce the documented customer ranges', () => {

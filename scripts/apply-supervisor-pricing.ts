@@ -26,7 +26,7 @@ data.globalVars = {
   marginHoliday: 30,
   overnightCost: 200,
   emptyLegThresholdKm: 20,
-  dualDriverThresholdHours: 13,
+  dualDriverThresholdHours: 9,
   waitingWageFactor: 0.75,
   customerRangePct: 12,
   yardAddress: 'Unit 1, Carolean Coaches, Bentley Lane, Walsall WS2 8TL, UK',

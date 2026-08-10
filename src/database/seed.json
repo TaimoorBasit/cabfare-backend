@@ -2407,7 +2407,7 @@
     "marginWeekday": 20,
     "marginWeekend": 25,
     "marginHoliday": 30,
-    "netMarginPct": 0,
+    "netMarginPct": 5,
     "netProfitTarget": 0,
     "overnightCost": 200,
     "waitingChargePerHour": 35,
@@ -2416,7 +2416,7 @@
     "yardLat": 52.5842,
     "yardLng": -1.9873,
     "emptyLegThresholdKm": 20,
-    "dualDriverThresholdHours": 13,
+    "dualDriverThresholdHours": 9,
     "waitingWageFactor": 0.75,
     "customerRangePct": 12
   },

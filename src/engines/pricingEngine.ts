@@ -200,6 +200,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   let appliedMarginPct = 0;
   let appliedDriverRate = 0;
   let waitingHours = 0;
+  let mandatoryBreakHours = 0;
 
   const gv = data.globalVars || {};
   const totalKm = liveKm + deadKm;
@@ -207,9 +208,9 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   distanceCost = totalKm * vehicleRate;
 
   const drivingHours = input.totalDurationMinutes / 60;
-  const journeyClass = input.journeyClass || (!returnDate ? 'ONE_WAY' : calculateOperatingDays(departureDate, returnDate) === 1 ? 'SAME_DAY_RETURN' : 'MULTI_DAY_RETURN');
+  const operatingDays = calculateOperatingDays(departureDate, returnDate);
   const requestedWaitingHours = (Number(waitingMins) || 0) / 60;
-  waitingHours = journeyClass === 'SAME_DAY_RETURN' ? Math.max(1, requestedWaitingHours) : requestedWaitingHours;
+  waitingHours = requestedWaitingHours;
   
   const configuredDriverWage = isHolidayDeparture
     ? gv.driverWageHoliday
@@ -218,11 +219,17 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       : gv.driverWageWeekday;
   const driverWage = configuredNumber('driver hourly wage', [configuredDriverWage, gv.driverHourlyWage], { positive: true });
   appliedDriverRate = driverWage;
-  const dualDriverThreshold = configuredNumber('two-driver threshold', [gv.dualDriverThresholdHours ?? 13], { positive: true });
   const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor ?? 0.75], { positive: true });
-  dualCrew = drivingHours >= dualDriverThreshold;
-  const driverCount = dualCrew ? 2 : 1;
-  driverCost = ((drivingHours * driverWage) + (waitingHours * driverWage * waitingFactor)) * driverCount;
+  const dailyDrivingHours = drivingHours / operatingDays;
+  const dailyDrivingLimit = Math.min(9, configuredNumber('daily driving limit', [gv.dualDriverThresholdHours ?? 9], { positive: true }));
+  const driverCount = Math.max(1, Math.ceil(dailyDrivingHours / dailyDrivingLimit));
+  dualCrew = driverCount > 1;
+  const drivingBreakHours = Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / 4.5) * 0.75 * operatingDays;
+  const workingHours = drivingHours + waitingHours;
+  const dailyWorkingHours = workingHours / operatingDays;
+  const workingTimeBreakHours = (dailyWorkingHours > 9 ? 0.75 : dailyWorkingHours > 6 ? 0.5 : 0) * operatingDays;
+  mandatoryBreakHours = Math.max(drivingBreakHours, workingTimeBreakHours);
+  driverCost = ((drivingHours + mandatoryBreakHours) * driverWage + waitingHours * driverWage * waitingFactor) * driverCount;
 
   if (template) {
     baseFare = configuredNumber('route template price', [template.price]);
@@ -296,10 +303,11 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       // every defined journey class; their configured rates remain reporting inputs.
       standingCost = 0;
       overnightCost = 0;
+      waitingCharge = waitingHours * configuredNumber('waiting charge per hour', [gv.waitingChargePerHour]);
       const rawSubtotal = distanceCost + driverCost + standingCost + overnightCost;
 
       baseFare = rawSubtotal;
-      preSurchargeBase = baseFare;
+      preSurchargeBase = baseFare + waitingCharge;
     }
   }
 
@@ -414,7 +422,17 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
     }
   }
 
-    const roundedFinalFare = roundToNearestFive(finalFare);
+  const vehicleEconomics = fleetEconomics(data).vehicleBreakdown.find((item: any) => item.id === vehicleId);
+  const allocatedStanding = (Number(vehicleEconomics?.dailyStanding) || 0) * operatingDays;
+  const allocatedOverhead = (Number(vehicleEconomics?.dailyOverhead) || 0) * operatingDays;
+  const accountingCost = distanceCost + driverCost + standingCost + overnightCost + allocatedStanding + allocatedOverhead + surchargeTotal;
+  const netMarginPct = Math.max(5, configuredNumber('net margin percentage', [gv.netMarginPct ?? 5]));
+  if (netMarginPct >= 100) throw new PricingConfigurationError('net margin percentage must be less than 100');
+  const netProfitTarget = configuredNumber('minimum net profit', [gv.netProfitTarget ?? 0]);
+  const profitFloor = Math.max(accountingCost / (1 - netMarginPct / 100), accountingCost + netProfitTarget);
+  finalFare = Math.max(finalFare, profitFloor);
+
+    const roundedFinalFare = Math.ceil(finalFare / 5) * 5;
     const customerRangePct = configuredNumber('customer price range percentage', [gv.customerRangePct ?? 12]);
     const upperBoundFare = roundToNearestFive(finalFare * (1 + customerRangePct / 100));
 
@@ -439,11 +457,18 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
         overnightCost,
         commercialWeight: Number.isFinite(commercialWeight) && commercialWeight > 0 ? commercialWeight : 1,
         marginPct: appliedMarginPct,
+        netMarginPct,
+        netProfitTarget,
+        profitFloor: Math.round(profitFloor * 100) / 100,
+        allocatedStanding: Math.round(allocatedStanding * 100) / 100,
+        allocatedOverhead: Math.round(allocatedOverhead * 100) / 100,
         driverRate: appliedDriverRate,
+        driverCount,
+        dailyDrivingLimit,
+        mandatoryBreakHours,
         waitingHours,
         surchargeTotal: Math.round(surchargeTotal * 100) / 100,
         customerRangePct
       }
     };
 }
-
