@@ -23,8 +23,11 @@ export interface User {
   lastLoginAt?: string;
   lastActiveAt?: string;
   usageMinutes?: number;
+  usageSeconds?: number;
   loginCount?: number;
-  usageByDate?: Record<string, { minutes: number; logins: number; lastLoginAt?: string; lastActiveAt?: string }>;
+  sessionStartedAt?: string;
+  sessionLastSeenAt?: string;
+  usageByDate?: Record<string, { minutes: number; seconds?: number; logins: number; lastLoginAt?: string; lastActiveAt?: string }>;
 }
 
 export interface PricingMatrixRule {
@@ -193,6 +196,7 @@ function normalizeAccessData(data: DatabaseSchema) {
     if (!user.status) { user.status = 'active'; changed = true; }
     if (!Array.isArray(user.permissions)) { user.permissions = []; changed = true; }
     if (!Number.isFinite(Number(user.usageMinutes))) { user.usageMinutes = 0; changed = true; }
+    if (!Number.isFinite(Number(user.usageSeconds))) { user.usageSeconds = 0; changed = true; }
     if (!Number.isFinite(Number(user.loginCount))) { user.loginCount = 0; changed = true; }
     if (!user.usageByDate || typeof user.usageByDate !== 'object') { user.usageByDate = {}; changed = true; }
   });

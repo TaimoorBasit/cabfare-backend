@@ -75,6 +75,21 @@ export function recordDailyUsage(user: User, now: Date, minutes = 0, login = fal
   daily.lastActiveAt = now.toISOString();
 }
 
+export function recordSessionTime(user: User, now: Date, stop = false) {
+  const previous = user.sessionLastSeenAt ? new Date(user.sessionLastSeenAt).getTime() : now.getTime();
+  const seconds = Math.min(30, Math.max(0, Math.floor((now.getTime() - previous) / 1000)));
+  user.usageSeconds = (Number(user.usageSeconds) || 0) + seconds;
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(now);
+  user.usageByDate ||= {};
+  const daily = user.usageByDate[day] ||= { minutes: 0, logins: 0 };
+  daily.seconds = (Number(daily.seconds) || 0) + seconds;
+  daily.lastActiveAt = now.toISOString();
+  user.lastActiveAt = now.toISOString();
+  if (stop) { delete user.sessionStartedAt; delete user.sessionLastSeenAt; }
+  else user.sessionLastSeenAt = now.toISOString();
+  return seconds;
+}
+
 export async function recordLogin(user: User, env: any) {
   const db = await getDatabase(env);
   if (!db.data) return;
@@ -84,7 +99,17 @@ export async function recordLogin(user: User, env: any) {
   stored.lastLoginAt = now;
   stored.lastActiveAt = now;
   stored.loginCount = (Number(stored.loginCount) || 0) + 1;
+  stored.sessionStartedAt = now;
+  stored.sessionLastSeenAt = now;
   recordDailyUsage(stored, new Date(now), 0, true);
+  await db.write();
+}
+
+export async function recordSessionHeartbeat(userId: string, env: any, stop = false) {
+  const db = await getDatabase(env);
+  const user = db.data?.users.find(item => item.id === userId);
+  if (!db.data || !user || !user.sessionStartedAt) return;
+  recordSessionTime(user, new Date(), stop);
   await db.write();
 }
 
@@ -92,6 +117,7 @@ export async function touchUserActivity(userId: string, env: any) {
   const db = await getDatabase(env);
   const user = db.data?.users.find(item => item.id === userId);
   if (!db.data || !user) return;
+  if (user.sessionStartedAt) return;
   const now = Date.now();
   const previous = user.lastActiveAt ? new Date(user.lastActiveAt).getTime() : now;
   const elapsedMinutes = Math.max(0, (now - previous) / 60000);

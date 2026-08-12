@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ALL_PERMISSIONS, can, issueAccessToken, permissionsFor } from '../src/services/access';
 import { inviteHandler } from '../src/controllers/admin_staffController';
-import { recordDailyUsage } from '../src/services/user';
+import { recordDailyUsage, recordSessionTime } from '../src/services/user';
 
 test('staff roles expose only their configured areas and issue expiring one-time credentials', () => {
   assert.deepEqual(permissionsFor({ role: 'quotes', permissions: [] }), ['bookings']);
@@ -18,6 +18,14 @@ test('staff roles expose only their configured areas and issue expiring one-time
   assert.notEqual(user.resetTokenHash, issued.token);
   assert.ok(new Date(issued.expiresAt).getTime() > Date.now());
   assert.ok(ALL_PERMISSIONS.includes('staff'));
+});
+
+test('session seconds accumulate and stop without replacing previous minutes', () => {
+  const user: any = { usageMinutes: 12, usageSeconds: 8, sessionStartedAt: '2026-08-12T10:00:00Z', sessionLastSeenAt: '2026-08-12T10:00:00Z' };
+  recordSessionTime(user, new Date('2026-08-12T10:00:07Z'), true);
+  assert.equal(user.usageMinutes, 12);
+  assert.equal(user.usageSeconds, 15);
+  assert.equal(user.sessionStartedAt, undefined);
 });
 
 test('usage and logins are stored per day', () => {

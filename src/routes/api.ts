@@ -18,7 +18,7 @@ import * as quotesCalculate from '../controllers/quotes_calculateController';
 import { fleetEconomics } from '../engines/pricingEngine';
 import { getCurrentUser } from '../auth/auth';
 import { can } from '../services/access';
-import { touchUserActivity } from '../services/user';
+import { recordSessionHeartbeat, touchUserActivity } from '../services/user';
 
 const api = new Hono();
 
@@ -86,6 +86,17 @@ api.post('/auth/register', bindHandler(authRegister, 'postHandler'));
 api.get('/auth/me', bindHandler(authMe, 'getHandler'));
 api.post('/auth/complete-invite', bindHandler(authAccess, 'inviteHandler'));
 api.post('/auth/reset-password', bindHandler(authAccess, 'resetHandler'));
+api.post('/auth/activity', async c => {
+    const user = await getCurrentUser(c.req.header('Authorization'), env(c));
+    if (!user) return c.json({ error: 'Authentication required' }, 401);
+    await recordSessionHeartbeat(user.id, env(c));
+    return c.json({ success: true });
+});
+api.post('/auth/logout', async c => {
+    const user = await getCurrentUser(c.req.header('Authorization'), env(c));
+    if (user) await recordSessionHeartbeat(user.id, env(c), true);
+    return c.json({ success: true });
+});
 
 
 api.get('/admin/config', bindHandler(adminConfig, 'getHandler'));

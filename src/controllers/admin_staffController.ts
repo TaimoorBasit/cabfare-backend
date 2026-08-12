@@ -15,7 +15,10 @@ const publicUser = (user: User, activities: any[]) => ({
   lastLoginAt: user.lastLoginAt,
   lastActiveAt: user.lastActiveAt,
   usageMinutes: Math.round(Number(user.usageMinutes) || 0),
+  usageSeconds: Number(user.usageSeconds) || 0,
   loginCount: Number(user.loginCount) || 0,
+  sessionStartedAt: user.sessionStartedAt,
+  sessionLastSeenAt: user.sessionLastSeenAt,
   usageByDate: user.usageByDate || {},
   activities: activities.filter(item => item.actorId === user.id)
 });
