@@ -9,19 +9,33 @@ import * as adminSeasonal from '../controllers/admin_seasonalController';
 import * as authLogin from '../controllers/auth_loginController';
 import * as authMe from '../controllers/auth_meController';
 import * as authRegister from '../controllers/auth_registerController';
+import * as authAccess from '../controllers/auth_accessController';
+import * as adminStaff from '../controllers/admin_staffController';
 import * as bookings from '../controllers/bookingsController';
 import * as dbTest from '../controllers/db-testController';
 import * as hello from '../controllers/helloController';
 import * as quotesCalculate from '../controllers/quotes_calculateController';
 import { fleetEconomics } from '../engines/pricingEngine';
 import { getCurrentUser } from '../auth/auth';
+import { can } from '../services/access';
+import { touchUserActivity } from '../services/user';
 
 const api = new Hono();
 
+export const resolveAdminAuthorization = (authorization?: string, customToken?: string) =>
+    authorization || (customToken ? `Bearer ${customToken}` : undefined);
+
 const requireAdmin = async (c: any, next: any) => {
-    const user = await getCurrentUser(c.req.header('Authorization'), env(c));
+    const user = await getCurrentUser(resolveAdminAuthorization(c.req.header('Authorization'), c.req.header('X-Admin-Token')), env(c));
     if (!user) return c.json({ error: 'Authentication required' }, 401);
     c.set('adminUser', user);
+    await touchUserActivity(user.id, env(c));
+    await next();
+};
+
+const requirePermission = (permission: string) => async (c: any, next: any) => {
+    const user = c.get('adminUser');
+    if (!user || !can(user, permission)) return c.json({ error: 'You do not have permission to use this area' }, 403);
     await next();
 };
 
@@ -42,7 +56,8 @@ const createShim = (handler: any) => {
             body,
             query: c.req.query(),
             headers: c.req.header(),
-            env: env(c) 
+            env: env(c),
+            adminUser: c.get('adminUser')
         };
         let responseSent = false;
         let responsePayload: any = null;
@@ -69,14 +84,22 @@ const bindHandler = (controller: any, method: string) => {
 api.post('/auth/login', bindHandler(authLogin, 'postHandler'));
 api.post('/auth/register', bindHandler(authRegister, 'postHandler'));
 api.get('/auth/me', bindHandler(authMe, 'getHandler'));
+api.post('/auth/complete-invite', bindHandler(authAccess, 'inviteHandler'));
+api.post('/auth/reset-password', bindHandler(authAccess, 'resetHandler'));
 
 
 api.get('/admin/config', bindHandler(adminConfig, 'getHandler'));
-api.post('/admin/config', bindHandler(adminConfig, 'postHandler'));
-api.get('/admin/dashboard', bindHandler(adminDashboard, 'getHandler'));
+api.post('/admin/config', requirePermission('settings'), bindHandler(adminConfig, 'postHandler'));
+api.get('/admin/dashboard', requirePermission('dashboard'), bindHandler(adminDashboard, 'getHandler'));
+api.get('/admin/staff', requirePermission('staff'), bindHandler(adminStaff, 'getHandler'));
+api.post('/admin/staff/invite', requirePermission('staff'), bindHandler(adminStaff, 'inviteHandler'));
+api.post('/admin/staff/resend', requirePermission('staff'), bindHandler(adminStaff, 'resendHandler'));
+api.post('/admin/staff/reset', requirePermission('staff'), bindHandler(adminStaff, 'resetHandler'));
+api.put('/admin/staff', requirePermission('staff'), bindHandler(adminStaff, 'putHandler'));
+api.delete('/admin/staff', requirePermission('staff'), bindHandler(adminStaff, 'deleteHandler'));
 
 
-api.post('/admin/economics', createShim(async (req: any, res: any) => {
+api.post('/admin/economics', requirePermission('fleet'), createShim(async (req: any, res: any) => {
     const dbData = req.body;
     try {
         const eco = fleetEconomics(dbData);
@@ -87,33 +110,33 @@ api.post('/admin/economics', createShim(async (req: any, res: any) => {
 }));
 
 
-api.get('/admin/pricing-matrix', bindHandler(adminPricingMatrix, 'getHandler'));
-api.post('/admin/pricing-matrix', bindHandler(adminPricingMatrix, 'postHandler'));
-api.put('/admin/pricing-matrix', bindHandler(adminPricingMatrix, 'putHandler'));
-api.delete('/admin/pricing-matrix', bindHandler(adminPricingMatrix, 'deleteHandler'));
+api.get('/admin/pricing-matrix', requirePermission('pricing'), bindHandler(adminPricingMatrix, 'getHandler'));
+api.post('/admin/pricing-matrix', requirePermission('pricing'), bindHandler(adminPricingMatrix, 'postHandler'));
+api.put('/admin/pricing-matrix', requirePermission('pricing'), bindHandler(adminPricingMatrix, 'putHandler'));
+api.delete('/admin/pricing-matrix', requirePermission('pricing'), bindHandler(adminPricingMatrix, 'deleteHandler'));
 
 
-api.get('/admin/route-templates', bindHandler(adminRouteTemplates, 'getHandler'));
-api.post('/admin/route-templates', bindHandler(adminRouteTemplates, 'postHandler'));
-api.put('/admin/route-templates', bindHandler(adminRouteTemplates, 'putHandler'));
-api.delete('/admin/route-templates', bindHandler(adminRouteTemplates, 'deleteHandler'));
+api.get('/admin/route-templates', requirePermission('pricing'), bindHandler(adminRouteTemplates, 'getHandler'));
+api.post('/admin/route-templates', requirePermission('pricing'), bindHandler(adminRouteTemplates, 'postHandler'));
+api.put('/admin/route-templates', requirePermission('pricing'), bindHandler(adminRouteTemplates, 'putHandler'));
+api.delete('/admin/route-templates', requirePermission('pricing'), bindHandler(adminRouteTemplates, 'deleteHandler'));
 
 
-api.get('/admin/seasonal', bindHandler(adminSeasonal, 'getHandler'));
-api.post('/admin/seasonal', bindHandler(adminSeasonal, 'postHandler'));
-api.put('/admin/seasonal', bindHandler(adminSeasonal, 'putHandler'));
-api.delete('/admin/seasonal', bindHandler(adminSeasonal, 'deleteHandler'));
+api.get('/admin/seasonal', requirePermission('pricing'), bindHandler(adminSeasonal, 'getHandler'));
+api.post('/admin/seasonal', requirePermission('pricing'), bindHandler(adminSeasonal, 'postHandler'));
+api.put('/admin/seasonal', requirePermission('pricing'), bindHandler(adminSeasonal, 'putHandler'));
+api.delete('/admin/seasonal', requirePermission('pricing'), bindHandler(adminSeasonal, 'deleteHandler'));
 
 
-api.get('/admin/availability', bindHandler(adminAvailability, 'getHandler'));
-api.post('/admin/availability', bindHandler(adminAvailability, 'postHandler'));
-api.delete('/admin/availability', bindHandler(adminAvailability, 'deleteHandler'));
+api.get('/admin/availability', requirePermission('fleet'), bindHandler(adminAvailability, 'getHandler'));
+api.post('/admin/availability', requirePermission('fleet'), bindHandler(adminAvailability, 'postHandler'));
+api.delete('/admin/availability', requirePermission('fleet'), bindHandler(adminAvailability, 'deleteHandler'));
 
 
-api.get('/bookings', bindHandler(bookings, 'getHandler'));
+api.get('/bookings', requirePermission('bookings'), bindHandler(bookings, 'getHandler'));
 api.post('/bookings', bindHandler(bookings, 'postHandler'));
-api.delete('/bookings', bindHandler(bookings, 'deleteHandler'));
-api.put('/bookings', bindHandler(bookings, 'putHandler'));
+api.delete('/bookings', requirePermission('bookings'), bindHandler(bookings, 'deleteHandler'));
+api.put('/bookings', requirePermission('bookings'), bindHandler(bookings, 'putHandler'));
 
 
 api.post('/quotes/calculate', bindHandler(quotesCalculate, 'postHandler'));

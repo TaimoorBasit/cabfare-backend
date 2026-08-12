@@ -58,7 +58,9 @@ test('supervisor pricing migration preserves operational records', () => {
   assert.deepEqual(data.users, [{ id: 'user-1' }]);
   assert.deepEqual(data.bookings, [{ id: 'booking-1' }]);
   assert.deepEqual(data.quotes, [{ id: 'quote-1' }]);
-  assert.equal(data.vehicles[0].ratePerKm, 2.6);
+  assert.equal(data.vehicles[0].ratePerKm, 0.79);
+  assert.equal(data.vehicles[0].minimumHire, 450);
+  assert.equal(data.routeTemplates.some((route: any) => route.id.startsWith('company-')), false);
   assert.equal(data.pricingMatrix[0].status, 'inactive');
   assert.equal(applySupervisorPricingMigration(data), false);
 });

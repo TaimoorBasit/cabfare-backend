@@ -2321,7 +2321,7 @@
       "maintenanceCostPerKm": 0.08,
       "tyreSetCost": 1200,
       "expectedTyreLifeKm": 60000
-      ,"ratePerKm": 1.2
+      ,"ratePerKm": 0.26
       ,"commercialWeight": 1
       ,"standingCostPerDay": 150
     },
@@ -2354,7 +2354,7 @@
       "maintenanceCostPerKm": 0.12,
       "tyreSetCost": 2800,
       "expectedTyreLifeKm": 80000
-      ,"ratePerKm": 1.65
+      ,"ratePerKm": 0.29
       ,"commercialWeight": 1.08
       ,"standingCostPerDay": 200
     },
@@ -2391,7 +2391,7 @@
       "profitMarginPct": 30,
       "fuelPricePerLitre": 1.52,
       "standingCostPerDay": 260,
-      "ratePerKm": 2.6,
+      "ratePerKm": 0.79,
       "commercialWeight": 1.12
     }
   ],

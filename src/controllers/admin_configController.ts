@@ -21,6 +21,7 @@ const nonNegativeGlobalFields = [
 const positiveVehicleFields = ['capacity', 'fleetCount', 'utilisationDays', 'fuelKpl', 'expectedTyreLifeKm'];
 const nonNegativeVehicleFields = [
   'ratePerKm', 'standingCostPerDay', 'commercialWeight', 'maintenanceCostPerKm',
+  'sellingRateOneWay', 'sellingRateReturn', 'minimumHire', 'includedKmOneWay', 'includedKmReturn',
   'tyreSetCost', 'fuelPricePerLitre', 'tyreCostPerKm', 'driverHourlyWage',
   'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct'
 ];
@@ -277,7 +278,8 @@ export const postHandler = async (req: Request, res: Response) => {
         ...config.operatorDetails
       };
     }
-    addActivity(db, 'configuration', 'Admin configuration updated');
+    addActivity(db, 'configuration', 'Updated admin configuration', req.adminUser,
+      Object.keys(config).map(field => ({ field, after: 'Updated' })));
     await db.write();
   }
   return res.json({ success: true });

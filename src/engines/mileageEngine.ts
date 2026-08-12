@@ -10,17 +10,21 @@ export class MileageUnavailableError extends Error {
 export async function getDirections(origin: any, destination: any, waypoints: any[] = [], apiKey: string) {
   if (!apiKey) throw new Error("Google Maps API key is required");
 
-  let waypointsStr = '';
-  if (waypoints.length > 0) {
-    waypointsStr = '&waypoints=' + waypoints.map(w => formatLoc(w)).join('|');
+  const request = async (from: any, to: any, stops: any[]) => {
+    const waypointsStr = stops.length > 0
+      ? '&waypoints=' + stops.map(w => formatLoc(w)).join('|')
+      : '';
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${formatLoc(from)}&destination=${formatLoc(to)}${waypointsStr}&region=uk&key=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Google Maps API error: ${res.statusText}`);
+    return await res.json() as any;
+  };
+
+  let data = await request(origin, destination, waypoints);
+  if (data.status === 'NOT_FOUND') {
+    const resolved = await Promise.all([origin, ...waypoints, destination].map(loc => geocodeLocation(loc, apiKey)));
+    data = await request(resolved[0], resolved[resolved.length - 1], resolved.slice(1, -1));
   }
-
-  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${formatLoc(origin)}&destination=${formatLoc(destination)}${waypointsStr}&key=${apiKey}`;
-
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Google Maps API error: ${res.statusText}`);
-
-  const data: any = await res.json();
   if (data.status !== 'OK') {
     throw new Error(`Google Maps API failed: ${data.status} - ${data.error_message || ''}`);
   }
@@ -34,6 +38,25 @@ function formatLoc(loc: any) {
     return `${Number(loc.lat)},${Number(loc.lng)}`;
   }
   throw new Error('A valid route location is required');
+}
+
+async function geocodeLocation(loc: any, apiKey: string) {
+  if (typeof loc !== 'string') return loc;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(loc.trim())}&components=country:GB&region=uk&key=${apiKey}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Google Maps geocoding error: ${res.statusText}`);
+  const data: any = await res.json();
+  const point = data.results?.[0]?.geometry?.location;
+  if (data.status !== 'OK' || !point) throw new Error(`Location not found: ${loc}`);
+  return point;
+}
+
+export function resolveRoutePoints(journey: any) {
+  const names = journey.waypoints?.length >= 2
+    ? journey.waypoints
+    : [journey.origin, journey.destination];
+  const coords = Array.isArray(journey.wpCoords) ? journey.wpCoords : [];
+  return names.map((name: any, index: number) => coords[index] || name);
 }
 
 const mileageCache = new Map<string, any>();
@@ -57,7 +80,7 @@ export async function calculateMileage(journey: any, env: any) {
   }
 
   // Build the live route points
-  const livePoints = waypoints?.length >= 2 ? waypoints : [origin, destination];
+  const livePoints = resolveRoutePoints({ origin, destination, waypoints, wpCoords: journey.wpCoords });
   const liveOrigin = livePoints[0];
   const liveDestination = livePoints[livePoints.length - 1];
   const liveWaypoints = livePoints.slice(1, -1);

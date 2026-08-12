@@ -13,6 +13,17 @@ export interface User {
   passwordHash: string;
   name: string;
   createdAt: string;
+  role?: 'owner' | 'admin' | 'quotes' | 'custom';
+  permissions?: string[];
+  status?: 'active' | 'invited' | 'suspended';
+  inviteTokenHash?: string;
+  inviteExpiresAt?: string;
+  resetTokenHash?: string;
+  resetExpiresAt?: string;
+  lastLoginAt?: string;
+  lastActiveAt?: string;
+  usageMinutes?: number;
+  loginCount?: number;
 }
 
 export interface PricingMatrixRule {
@@ -83,6 +94,11 @@ export interface DatabaseSchema {
     emoji?: string;
     desc?: string;
     ratePerKm?: number;
+    sellingRateOneWay?: number;
+    sellingRateReturn?: number;
+    minimumHire?: number;
+    includedKmOneWay?: number;
+    includedKmReturn?: number;
     standingCostPerDay?: number;
     commercialWeight?: number;
     
@@ -140,6 +156,9 @@ export interface DatabaseSchema {
     type: string;
     message: string;
     createdAt: string;
+    actorId?: string;
+    actorName?: string;
+    changes?: { field: string; before?: unknown; after?: unknown }[];
   }[];
 }
 
@@ -163,6 +182,19 @@ function createEmptyDatabase(): DatabaseSchema {
     blockedDates: [],
     activityLog: []
   };
+}
+
+function normalizeAccessData(data: DatabaseSchema) {
+  if (!Array.isArray(data.users) || data.users.length === 0) return false;
+  let changed = false;
+  data.users.forEach((user, index) => {
+    if (!user.role) { user.role = index === 0 ? 'owner' : 'admin'; changed = true; }
+    if (!user.status) { user.status = 'active'; changed = true; }
+    if (!Array.isArray(user.permissions)) { user.permissions = []; changed = true; }
+    if (!Number.isFinite(Number(user.usageMinutes))) { user.usageMinutes = 0; changed = true; }
+    if (!Number.isFinite(Number(user.loginCount))) { user.loginCount = 0; changed = true; }
+  });
+  return changed;
 }
 
 class KVAdapter {
@@ -295,15 +327,15 @@ export class DB {
 
 export function applySupervisorPricingMigration(data: DatabaseSchema) {
   const globalVars = data.globalVars || (data.globalVars = {});
-  if (globalVars.pricingModelVersion === 'supervisor-2025-12') return false;
-  const vehiclePolicies: Record<string, { ratePerKm: number; commercialWeight: number; standingCostPerDay: number }> = {
-    minibus: { ratePerKm: 1.2, commercialWeight: 1, standingCostPerDay: 150 },
-    bus: { ratePerKm: 1.65, commercialWeight: 1.08, standingCostPerDay: 200 },
-    coach: { ratePerKm: 2.6, commercialWeight: 1.12, standingCostPerDay: 260 }
+  if (globalVars.pricingModelVersion === 'company-calculation-2026-08-2') return false;
+  const vehiclePolicies: Record<string, any> = {
+    minibus: { ratePerKm: 0.26, sellingRateOneWay: 1.2, sellingRateReturn: 0.65, minimumHire: 175, includedKmOneWay: 20, includedKmReturn: 40, commercialWeight: 1, standingCostPerDay: 150 },
+    bus: { ratePerKm: 0.29, sellingRateOneWay: 1.65, sellingRateReturn: 0.85, minimumHire: 275, includedKmOneWay: 20, includedKmReturn: 50, commercialWeight: 1.08, standingCostPerDay: 200 },
+    coach: { ratePerKm: 0.79, sellingRateOneWay: 2.2, sellingRateReturn: 1, minimumHire: 450, includedKmOneWay: 0, includedKmReturn: 75, commercialWeight: 1.12, standingCostPerDay: 260 }
   };
   data.vehicles = (data.vehicles || []).map(vehicle => ({ ...vehicle, ...(vehiclePolicies[vehicle.id] || {}) }));
   Object.assign(globalVars, {
-    pricingModelVersion: 'supervisor-2025-12',
+    pricingModelVersion: 'company-calculation-2026-08-2',
     driverWageWeekday: 15,
     driverWageWeekend: 20,
     driverWageHoliday: 22,
@@ -319,6 +351,8 @@ export function applySupervisorPricingMigration(data: DatabaseSchema) {
     yardLat: 52.5842,
     yardLng: -1.9873
   });
+  data.routeTemplates ||= [];
+  data.routeTemplates = data.routeTemplates.filter(route => !route.id.startsWith('company-'));
   data.pricingMatrix = (data.pricingMatrix || []).map(rule => ({ ...rule, status: 'inactive' as const }));
   return true;
 }
@@ -333,8 +367,9 @@ export async function initDatabase(env: any): Promise<DB> {
 
   if (!db.data || Object.keys(db.data).length === 0) {
     db.data = createEmptyDatabase();
+    applySupervisorPricingMigration(db.data);
     await db.write();
-  } else if (applySupervisorPricingMigration(db.data)) {
+  } else if (applySupervisorPricingMigration(db.data) || normalizeAccessData(db.data)) {
     await db.write();
   }
 
@@ -356,14 +391,17 @@ export async function getDatabase(env: any): Promise<DB> {
   return db!;
 }
 
-export function addActivity(db: DB, type: string, message: string) {
+export function addActivity(db: DB, type: string, message: string, actor?: any, changes?: any[]) {
   if (!db.data) return;
   if (!Array.isArray(db.data.activityLog)) db.data.activityLog = [];
   db.data.activityLog.unshift({
     id: `activity_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     type,
     message,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    actorId: actor?.id,
+    actorName: actor?.name || actor?.email,
+    changes: Array.isArray(changes) && changes.length ? changes.slice(0, 20) : undefined
   });
   db.data.activityLog = db.data.activityLog.slice(0, 100);
 }

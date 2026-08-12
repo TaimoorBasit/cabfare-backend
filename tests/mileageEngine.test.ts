@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateMileage, getDirections } from '../src/engines/mileageEngine';
+import { calculateMileage, getDirections, resolveRoutePoints } from '../src/engines/mileageEngine';
+
+test('route points prefer verified coordinates and fall back to address text', () => {
+  assert.deepEqual(resolveRoutePoints({
+    origin: 'Pickup text',
+    destination: 'Destination text',
+    waypoints: ['Pickup text', 'Stop text', 'Destination text'],
+    wpCoords: [{ lat: 52.5, lng: -1.9 }, null, { lat: 51.5, lng: -0.1 }]
+  }), [{ lat: 52.5, lng: -1.9 }, 'Stop text', { lat: 51.5, lng: -0.1 }]);
+});
 
 test('directions fails before making a request when the Maps API key is missing', async () => {
   await assert.rejects(
@@ -50,4 +59,26 @@ test('directions returns the real provider payload on success', async (t) => {
   globalThis.fetch = async () => Response.json(payload);
 
   assert.deepEqual(await getDirections('Alpha', 'Beta', [], 'test-key'), payload);
+});
+
+test('directions geocodes typed UK addresses after NOT_FOUND and retries with coordinates', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requested: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requested.push(url);
+    if (url.includes('/geocode/')) {
+      const lat = url.includes('Alpha') ? 52.5 : 52.6;
+      return Response.json({ status: 'OK', results: [{ geometry: { location: { lat, lng: -1.9 } } }] });
+    }
+    if (requested.filter(item => item.includes('/directions/')).length === 1) {
+      return Response.json({ status: 'NOT_FOUND' });
+    }
+    return Response.json({ status: 'OK', routes: [{ legs: [] }] });
+  };
+
+  const result = await getDirections('Alpha', 'Beta', [], 'test-key');
+  assert.equal(result.status, 'OK');
+  assert.match(requested.at(-1) || '', /origin=52\.5%2C-1\.9|origin=52\.5,-1\.9/);
 });

@@ -80,7 +80,7 @@ export const postHandler = async (req: Request, res: Response) => {
   if (error) return res.status(400).json({ error });
   const rule = normalizedRule(item);
   db.data.pricingMatrix.push(rule);
-  addActivity(db, 'pricing', `Pricing matrix rule ${rule.id} created`);
+  addActivity(db, 'pricing', `Created pricing matrix rule ${rule.id}`, req.adminUser);
   await db.write();
   return res.status(201).json(rule);
 };
@@ -96,7 +96,7 @@ export const putHandler = async (req: Request, res: Response) => {
   if (error) return res.status(400).json({ error });
   const rule = normalizedRule(item);
   db.data.pricingMatrix[index] = rule;
-  addActivity(db, 'pricing', `Pricing matrix rule ${rule.id} updated`);
+  addActivity(db, 'pricing', `Updated pricing matrix rule ${rule.id}`, req.adminUser);
   await db.write();
   return res.json(rule);
 };
@@ -109,7 +109,7 @@ export const deleteHandler = async (req: Request, res: Response) => {
   const before = db.data.pricingMatrix.length;
   db.data.pricingMatrix = db.data.pricingMatrix.filter(rule => rule.id !== id);
   if (db.data.pricingMatrix.length === before) return res.status(404).json({ error: 'Pricing matrix rule not found' });
-  addActivity(db, 'pricing', `Pricing matrix rule ${id} deleted`);
+  addActivity(db, 'pricing', `Deleted pricing matrix rule ${id}`, req.adminUser);
   await db.write();
   return res.json({ success: true });
 };

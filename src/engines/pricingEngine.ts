@@ -41,6 +41,18 @@ function configuredNumber(label: string, values: unknown[], options: { positive?
   return value;
 }
 
+// Mirrors the lifecycle fallback already computed in Admin/components/AdminApp.tsx
+// (direct per-km value wins when set; otherwise setCost / expectedLifeKm; otherwise a safe default),
+// so admin edits to either input actually reach the price instead of being silently ignored.
+function perKmCostWithLifecycleFallback(direct: unknown, setCost: unknown, expectedLifeKm: unknown, fallbackDefault: number) {
+  const directValue = Number(direct);
+  if (directValue > 0) return directValue;
+  const set = Number(setCost);
+  const life = Number(expectedLifeKm);
+  if (set > 0 && life > 0) return set / life;
+  return fallbackDefault;
+}
+
 function haversineKm(a: {lat: number, lng: number}, b: {lat: number, lng: number}) {
   if (!a || !b || !a.lat || !b.lat) return 9999;
   const R = 6371; 
@@ -204,8 +216,20 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
   const gv = data.globalVars || {};
   const totalKm = liveKm + deadKm;
-  const vehicleRate = configuredNumber('vehicle commercial rate per km', [vehicle.ratePerKm], { positive: true });
-  distanceCost = totalKm * vehicleRate;
+  const vehicleRate = configuredNumber('vehicle operating rate per km', [vehicle.ratePerKm], { positive: true });
+  const fuelPrice = configuredNumber('fuel price per litre', [
+    Number(vehicle.fuelPricePerLitre) > 0 ? vehicle.fuelPricePerLitre : null,
+    gv.fuelPricePerLitre
+  ]);
+  const fuelKpl = configuredNumber('vehicle fuel economy', [vehicle.fuelKpl], { positive: true });
+  const maintenanceCostPerKm = perKmCostWithLifecycleFallback(
+    vehicle.maintenanceCostPerKm, vehicle.maintenanceSetCost, vehicle.expectedMaintenanceLifeKm, 0.15
+  );
+  const tyreCostPerKm = perKmCostWithLifecycleFallback(
+    vehicle.tyreCostPerKm, vehicle.tyreSetCost, vehicle.expectedTyreLifeKm, 0.05
+  );
+  const physicalOperatingRate = (fuelPrice / fuelKpl) + maintenanceCostPerKm + tyreCostPerKm;
+  distanceCost = totalKm * (physicalOperatingRate > 0 ? physicalOperatingRate : vehicleRate);
 
   const drivingHours = input.totalDurationMinutes / 60;
   const operatingDays = calculateOperatingDays(departureDate, returnDate);
@@ -304,9 +328,17 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       standingCost = 0;
       overnightCost = 0;
       waitingCharge = waitingHours * configuredNumber('waiting charge per hour', [gv.waitingChargePerHour]);
-      const rawSubtotal = distanceCost + driverCost + standingCost + overnightCost;
-
-      baseFare = rawSubtotal;
+      const sellingRate = configuredNumber(
+        `${journeyType} selling rate per km`,
+        [journeyType === 'return' ? vehicle.sellingRateReturn : vehicle.sellingRateOneWay],
+        { positive: true }
+      );
+      const includedKm = configuredNumber(
+        `${journeyType} included mileage`,
+        [journeyType === 'return' ? vehicle.includedKmReturn : vehicle.includedKmOneWay]
+      );
+      const minimumHire = configuredNumber('vehicle minimum hire', [vehicle.minimumHire], { positive: true });
+      baseFare = minimumHire + Math.max(0, totalKm - includedKm) * sellingRate;
       preSurchargeBase = baseFare + waitingCharge;
     }
   }
@@ -354,17 +386,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
   let finalFare = preSurchargeBase + surchargeTotal;
 
-  if (isManualQuote) {
-
-    const configuredMargin = isHolidayDeparture
-      ? gv.marginHoliday
-      : isWeekendDeparture
-        ? gv.marginWeekend
-        : gv.marginWeekday;
-    appliedMarginPct = configuredNumber('profit margin percentage', [configuredMargin, gv.profitMarginPct]);
-    const costModelWeight = configuredNumber('vehicle commercial weight', [vehicle.commercialWeight], { positive: true });
-    finalFare = (preSurchargeBase * costModelWeight * (1 + appliedMarginPct / 100)) + surchargeTotal;
-  }
+  if (isManualQuote) finalFare = preSurchargeBase + surchargeTotal;
 
   const commercialWeight = Number(vehicle.commercialWeight);
   if (!isManualQuote && Number.isFinite(commercialWeight) && commercialWeight > 0) {

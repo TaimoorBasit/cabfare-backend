@@ -80,7 +80,7 @@ export const postHandler = async (req: Request, res: Response) => {
     };
 
     db.data.bookings.unshift(newBooking);
-    addActivity(db, 'booking', `New booking ${newBooking.id} received`);
+    addActivity(db, 'booking', `New booking ${newBooking.id} received`, req.adminUser);
     await db.write();
 
     return res.status(201).json({ success: true, booking: newBooking });
@@ -115,7 +115,7 @@ export const putHandler = async (req: Request, res: Response) => {
       updatedAt: new Date().toISOString()
     };
     db.data.bookings[index] = updatedBooking;
-    addActivity(db, 'booking', `Booking ${id} updated`);
+    addActivity(db, 'booking', `Updated booking ${id}`, req.adminUser);
     await db.write();
 
     return res.json({ success: true, booking: updatedBooking });
@@ -133,7 +133,7 @@ export const deleteHandler = async (req: Request, res: Response) => {
     const before = (db.data.bookings || []).length;
     db.data.bookings = (db.data.bookings || []).filter((booking: any) => booking.id !== id);
     if (db.data.bookings.length === before) return res.status(404).json({ error: 'Booking not found' });
-    addActivity(db, 'booking', `Booking ${id} deleted`);
+    addActivity(db, 'booking', `Deleted booking ${id}`, req.adminUser);
     await db.write();
     return res.json({ success: true });
   } catch (error: any) {

@@ -136,7 +136,7 @@ test('matrix scope priority is city, then fleet, then global', () => {
     originName: 'Gamma Terminal',
     destinationName: 'Delta Terminal'
   }), data).finalFare, 200);
-  assert.equal(calculatePriceFromData(makePricingInput({ vehicleId: 'coach' }), data).finalFare, 385);
+  assert.equal(calculatePriceFromData(makePricingInput({ vehicleId: 'coach' }), data).finalFare, 155);
 });
 
 test('seasonal rules honor applicability and highest priority override', () => {
@@ -223,28 +223,28 @@ test('seasonal multipliers apply when no override is configured', () => {
   assert.equal(result.finalFare, 300);
 });
 
-test('cost-model pricing applies vehicle rate, driver wage, margin and customer range', () => {
+test('cost-model pricing separates the customer fare from operating cost', () => {
   const result = calculatePriceFromData(makePricingInput(), makePricingData());
 
-  assert.equal(result.baseFare, 174);
+  assert.equal(result.baseFare, 295);
   assert.equal(result.driverCost, 30);
-  assert.equal(result.finalFare, 210);
-  assert.equal(result.upperBoundFare, 235);
-  assert.equal(result.breakdown.distanceCost, 144);
+  assert.equal(result.finalFare, 295);
+  assert.equal(result.upperBoundFare, 330);
+  assert.equal(result.breakdown.distanceCost, 54);
   assert.equal(result.pricingMethod, 'cost-model');
   assert.equal(result.isManualQuote, true);
 });
 
-test('weekend pricing uses the configured weekend wage and margin', () => {
+test('weekend driver cost cannot reduce the calibrated customer fare', () => {
   const result = calculatePriceFromData(makePricingInput({
     departureDate: '2026-08-08T12:00:00'
   }), makePricingData());
 
   assert.equal(result.driverCost, 40);
-  assert.equal(result.finalFare, 230);
+  assert.equal(result.finalFare, 295);
 });
 
-test('holiday pricing uses the configured holiday wage and margin', () => {
+test('holiday driver cost cannot reduce the calibrated customer fare', () => {
   const data = makePricingData();
   data.seasonalPricing.push({
     id: 'holiday-period',
@@ -261,7 +261,7 @@ test('holiday pricing uses the configured holiday wage and margin', () => {
   const result = calculatePriceFromData(makePricingInput(), data);
 
   assert.equal(result.driverCost, 44);
-  assert.equal(result.finalFare, 245);
+  assert.equal(result.finalFare, 295);
 });
 
 test('an M6 Toll charge is included only when the routed journey uses it', () => {
@@ -273,7 +273,7 @@ test('an M6 Toll charge is included only when the routed journey uses it', () =>
     withToll.surchargeLines.find((line: any) => /M6 Toll/.test(line.label)),
     { label: 'M6 Toll (PSV)', cost: 6.5 }
   );
-  assert.equal(withToll.finalFare, 220);
+  assert.equal(withToll.finalFare, 305);
 });
 
 test('multi-day pricing follows the supplied zero standing and overnight policy', () => {
@@ -283,12 +283,12 @@ test('multi-day pricing follows the supplied zero standing and overnight policy'
     returnDate: '2026-08-05T12:00:00'
   }), makePricingData());
 
-  assert.equal(result.baseFare, 294);
+  assert.equal(result.baseFare, 295);
   assert.equal(result.driverCost, 150);
   assert.equal(result.surchargeTotal, 0);
   assert.equal(result.breakdown.standingCost, 0);
   assert.equal(result.breakdown.overnightCost, 0);
-  assert.equal(result.finalFare, 355);
+  assert.equal(result.finalFare, 295);
   assert.equal(result.dualCrew, false);
 });
 
@@ -317,7 +317,7 @@ test('company overhead is covered by the minimum profitable fare', () => {
     totalDurationMinutes: 0
   }), data);
 
-  assert.equal(result.finalFare, 30);
+  assert.equal(result.finalFare, 175);
   assert.ok(result.finalFare >= result.breakdown.profitFloor);
 });
 
@@ -342,38 +342,31 @@ test('loss-making fixed prices are raised only to the shared profit floor', () =
   });
 
   const result = calculatePriceFromData(makePricingInput({ vehicleId: 'coach' }), data);
-  assert.equal(result.finalFare, 385);
+  assert.equal(result.finalFare, 155);
   assert.ok(result.finalFare >= result.breakdown.profitFloor);
 });
 
-test('supervisor worked examples reproduce the documented customer ranges', () => {
+test('company booking calibration covers short return, airport one-way and long return coaches', () => {
   const data = makePricingData();
   data.surcharges = { m6Toll: 0, dartford: 0, ulez: 0, birminghamCaz: 0, driverOvernightSubsistence: 0 };
-  data.vehicles.push(
-    { id: 'luxury-49', name: '49-Seat Luxury', capacity: 49, ratePerKm: 2.6, commercialWeight: 1.12 },
-    { id: 'standard-53', name: '53-Seat Standard', capacity: 53, ratePerKm: 1.9, commercialWeight: 1.12 },
-    { id: 'luxury-53', name: '53-Seat Luxury', capacity: 53, ratePerKm: 2.6, commercialWeight: 1.14 }
-  );
-
-  const oneWay = calculatePriceFromData(makePricingInput({
-    vehicleId: 'luxury-49', liveKm: 195, deadKm: 0,
-    liveDurationMinutes: 138, totalDurationMinutes: 138
-  }), data);
-  assert.deepEqual([oneWay.finalFare, oneWay.upperBoundFare], [730, 815]);
-
-  const sameDay = calculatePriceFromData(makePricingInput({
-    vehicleId: 'standard-53', journeyType: 'return', journeyClass: 'SAME_DAY_RETURN',
-    liveKm: 518, deadKm: 0, liveDurationMinutes: 318, totalDurationMinutes: 318,
+  const shortReturn = calculatePriceFromData(makePricingInput({
+    vehicleId: 'coach', journeyType: 'return', liveKm: 65, deadKm: 0,
+    liveDurationMinutes: 96, totalDurationMinutes: 96,
     returnDate: '2026-08-03T20:00:00.000Z'
   }), data);
-  assert.deepEqual([sameDay.finalFare, sameDay.upperBoundFare], [1445, 1620]);
-
-  const multiDay = calculatePriceFromData(makePricingInput({
-    vehicleId: 'luxury-53', journeyType: 'return', journeyClass: 'MULTI_DAY_RETURN',
-    liveKm: 522, deadKm: 261, liveDurationMinutes: 492, totalDurationMinutes: 492,
-    returnDate: '2026-08-13T12:00:00.000Z'
+  const airportOneWay = calculatePriceFromData(makePricingInput({
+    vehicleId: 'coach', liveKm: 169, deadKm: 35,
+    liveDurationMinutes: 124, totalDurationMinutes: 156
   }), data);
-  assert.deepEqual([multiDay.finalFare, multiDay.upperBoundFare], [2955, 3310]);
+  const longReturn = calculatePriceFromData(makePricingInput({
+    vehicleId: 'coach', journeyType: 'return', liveKm: 398, deadKm: 0,
+    liveDurationMinutes: 282, totalDurationMinutes: 282,
+    returnDate: '2026-08-03T20:00:00.000Z'
+  }), data);
+  assert.deepEqual([shortReturn.finalFare, airportOneWay.finalFare, longReturn.finalFare], [450, 900, 775]);
+  for (const result of [shortReturn, airportOneWay, longReturn]) {
+    assert.ok(result.finalFare >= result.breakdown.profitFloor);
+  }
 });
 
 test('manual pricing rejects missing business configuration instead of using hidden defaults', async (t) => {
@@ -386,12 +379,12 @@ test('manual pricing rejects missing business configuration instead of using hid
     {
       name: 'vehicle rate',
       mutate: data => { delete data.vehicles[0].ratePerKm; },
-      expected: /commercial rate per km/
+      expected: /operating rate per km/
     },
     {
-      name: 'commercial weight',
-      mutate: data => { delete data.vehicles[0].commercialWeight; },
-      expected: /commercial weight/
+      name: 'selling rate',
+      mutate: data => { delete data.vehicles[0].sellingRateOneWay; },
+      expected: /selling rate per km/
     },
     {
       name: 'driver wage',
@@ -402,12 +395,9 @@ test('manual pricing rejects missing business configuration instead of using hid
       expected: /driver hourly wage/
     },
     {
-      name: 'profit margin',
-      mutate: data => {
-        delete data.globalVars.marginWeekday;
-        delete data.globalVars.profitMarginPct;
-      },
-      expected: /profit margin percentage/
+      name: 'minimum hire',
+      mutate: data => { delete data.vehicles[0].minimumHire; },
+      expected: /minimum hire/
     },
     {
       name: 'M6 Toll',
