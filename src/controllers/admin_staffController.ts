@@ -16,7 +16,8 @@ const publicUser = (user: User, activities: any[]) => ({
   lastActiveAt: user.lastActiveAt,
   usageMinutes: Math.round(Number(user.usageMinutes) || 0),
   loginCount: Number(user.loginCount) || 0,
-  activities: activities.filter(item => item.actorId === user.id).slice(0, 50)
+  usageByDate: user.usageByDate || {},
+  activities: activities.filter(item => item.actorId === user.id)
 });
 
 const accessLink = (baseUrl: string, token: string, mode: 'invite' | 'reset') =>

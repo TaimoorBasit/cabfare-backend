@@ -24,6 +24,7 @@ export interface User {
   lastActiveAt?: string;
   usageMinutes?: number;
   loginCount?: number;
+  usageByDate?: Record<string, { minutes: number; logins: number; lastLoginAt?: string; lastActiveAt?: string }>;
 }
 
 export interface PricingMatrixRule {
@@ -193,6 +194,7 @@ function normalizeAccessData(data: DatabaseSchema) {
     if (!Array.isArray(user.permissions)) { user.permissions = []; changed = true; }
     if (!Number.isFinite(Number(user.usageMinutes))) { user.usageMinutes = 0; changed = true; }
     if (!Number.isFinite(Number(user.loginCount))) { user.loginCount = 0; changed = true; }
+    if (!user.usageByDate || typeof user.usageByDate !== 'object') { user.usageByDate = {}; changed = true; }
   });
   return changed;
 }
@@ -403,5 +405,4 @@ export function addActivity(db: DB, type: string, message: string, actor?: any, 
     actorName: actor?.name || actor?.email,
     changes: Array.isArray(changes) && changes.length ? changes.slice(0, 20) : undefined
   });
-  db.data.activityLog = db.data.activityLog.slice(0, 100);
 }

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ALL_PERMISSIONS, can, issueAccessToken, permissionsFor } from '../src/services/access';
 import { inviteHandler } from '../src/controllers/admin_staffController';
+import { recordDailyUsage } from '../src/services/user';
 
 test('staff roles expose only their configured areas and issue expiring one-time credentials', () => {
   assert.deepEqual(permissionsFor({ role: 'quotes', permissions: [] }), ['bookings']);
@@ -17,6 +18,15 @@ test('staff roles expose only their configured areas and issue expiring one-time
   assert.notEqual(user.resetTokenHash, issued.token);
   assert.ok(new Date(issued.expiresAt).getTime() > Date.now());
   assert.ok(ALL_PERMISSIONS.includes('staff'));
+});
+
+test('usage and logins are stored per day', () => {
+  const user: any = {};
+  const now = new Date('2026-08-12T10:00:00Z');
+  recordDailyUsage(user, now, 2, true);
+  const daily: any = Object.values(user.usageByDate)[0];
+  assert.equal(daily.logins, 1);
+  assert.equal(daily.minutes, 2);
 });
 
 test('submitting an existing pending email resends its invitation instead of rejecting it', async () => {

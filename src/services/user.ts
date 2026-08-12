@@ -66,6 +66,15 @@ export async function authenticateUser(email: string, password: string, env: any
   return valid ? user : null;
 }
 
+export function recordDailyUsage(user: User, now: Date, minutes = 0, login = false) {
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(now);
+  user.usageByDate ||= {};
+  const daily = user.usageByDate[day] ||= { minutes: 0, logins: 0 };
+  daily.minutes += minutes;
+  if (login) { daily.logins += 1; daily.lastLoginAt = now.toISOString(); }
+  daily.lastActiveAt = now.toISOString();
+}
+
 export async function recordLogin(user: User, env: any) {
   const db = await getDatabase(env);
   if (!db.data) return;
@@ -75,6 +84,7 @@ export async function recordLogin(user: User, env: any) {
   stored.lastLoginAt = now;
   stored.lastActiveAt = now;
   stored.loginCount = (Number(stored.loginCount) || 0) + 1;
+  recordDailyUsage(stored, new Date(now), 0, true);
   await db.write();
 }
 
@@ -87,6 +97,8 @@ export async function touchUserActivity(userId: string, env: any) {
   const elapsedMinutes = Math.max(0, (now - previous) / 60000);
   if (elapsedMinutes < 1) return;
   user.usageMinutes = (Number(user.usageMinutes) || 0) + Math.min(5, elapsedMinutes);
+  const addedMinutes = Math.min(5, elapsedMinutes);
   user.lastActiveAt = new Date(now).toISOString();
+  recordDailyUsage(user, new Date(now), addedMinutes);
   await db.write();
 }
