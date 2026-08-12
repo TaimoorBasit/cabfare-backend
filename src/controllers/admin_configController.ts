@@ -1,5 +1,6 @@
 ﻿type Request = any; type Response = any; type NextFunction = any;
 import { addActivity, getDatabase } from '../database/db';
+import { fleetEconomics } from '../engines/pricingEngine';
 
 const numericGlobalFields = [
   'driverWageWeekday', 'driverWageWeekend', 'driverWageHoliday',
@@ -7,7 +8,7 @@ const numericGlobalFields = [
   'waitingChargePerHour', 'yardLat', 'yardLng', 'fuelPricePerLitre',
   'driverHourlyWage', 'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct',
   'netMarginPct', 'netProfitTarget', 'dualDriverThresholdHours', 'waitingWageFactor',
-  'customerRangePct'
+  'customerRangePct', 'walkaroundCheckMinutes'
 ];
 
 const nonNegativeGlobalFields = [
@@ -15,7 +16,7 @@ const nonNegativeGlobalFields = [
   'marginWeekday', 'marginWeekend', 'marginHoliday', 'overnightCost',
   'waitingChargePerHour', 'fuelPricePerLitre', 'driverHourlyWage',
   'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct', 'netMarginPct', 'netProfitTarget',
-  'dualDriverThresholdHours', 'waitingWageFactor', 'customerRangePct'
+  'dualDriverThresholdHours', 'waitingWageFactor', 'customerRangePct', 'walkaroundCheckMinutes'
 ];
 
 const positiveVehicleFields = ['capacity', 'fleetCount', 'utilisationDays', 'fuelKpl', 'expectedTyreLifeKm'];
@@ -271,6 +272,22 @@ export const postHandler = async (req: Request, res: Response) => {
       };
     }
     if (config.annualOverheads) db.data.annualOverheads = config.annualOverheads;
+
+    // Minimum hire is derived from fleet economics (standing + overhead per
+    // day), never hand-typed — recompute and persist it on every save so it
+    // always reflects current overheads, fleet count and utilisation days.
+    // Only overwrite when the computed value is actually usable: a vehicle
+    // with incomplete fleet-economics inputs (no fleet count, no utilisation
+    // days, no annual costs) computes to 0, and writing that over a working
+    // minimumHire would silently break every quote for that vehicle.
+    if (Array.isArray(db.data.vehicles)) {
+      const economics = fleetEconomics(db.data);
+      db.data.vehicles = db.data.vehicles.map((vehicle: any) => {
+        const match = economics.vehicleBreakdown.find((v: any) => v.id === vehicle.id);
+        return match && Number(match.minHirePerDay) > 0 ? { ...vehicle, minimumHire: match.minHirePerDay } : vehicle;
+      });
+    }
+
     if (config.blockedDates) db.data.blockedDates = config.blockedDates;
     if (config.operatorDetails) {
       db.data.operatorDetails = {

@@ -216,12 +216,16 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
   const gv = data.globalVars || {};
   const totalKm = liveKm + deadKm;
-  const vehicleRate = configuredNumber('vehicle operating rate per km', [vehicle.ratePerKm], { positive: true });
+  // Fuel price/economy fall back to the same defaults Admin itself uses when
+  // a vehicle hasn't been fully configured (1.52/L, 5 km/L), so an
+  // incomplete vehicle degrades to an approximate running cost instead of
+  // refusing to price the trip at all.
   const fuelPrice = configuredNumber('fuel price per litre', [
     Number(vehicle.fuelPricePerLitre) > 0 ? vehicle.fuelPricePerLitre : null,
-    gv.fuelPricePerLitre
+    gv.fuelPricePerLitre,
+    1.52
   ]);
-  const fuelKpl = configuredNumber('vehicle fuel economy', [vehicle.fuelKpl], { positive: true });
+  const fuelKpl = configuredNumber('vehicle fuel economy', [vehicle.fuelKpl, 5], { positive: true });
   const maintenanceCostPerKm = perKmCostWithLifecycleFallback(
     vehicle.maintenanceCostPerKm, vehicle.maintenanceSetCost, vehicle.expectedMaintenanceLifeKm, 0.15
   );
@@ -229,9 +233,18 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
     vehicle.tyreCostPerKm, vehicle.tyreSetCost, vehicle.expectedTyreLifeKm, 0.05
   );
   const physicalOperatingRate = (fuelPrice / fuelKpl) + maintenanceCostPerKm + tyreCostPerKm;
+  // vehicle.ratePerKm is only needed in the rare case none of the above
+  // produced a usable rate — only require it then, not unconditionally.
+  const vehicleRate = physicalOperatingRate > 0 ? 0 : configuredNumber('vehicle operating rate per km', [vehicle.ratePerKm], { positive: true });
   distanceCost = totalKm * (physicalOperatingRate > 0 ? physicalOperatingRate : vehicleRate);
+  const fuelCost = totalKm * (fuelPrice / fuelKpl);
+  const maintenanceCost = totalKm * maintenanceCostPerKm;
+  const tyreCost = totalKm * tyreCostPerKm;
 
-  const drivingHours = input.totalDurationMinutes / 60;
+  // Driver must walk around the vehicle for a safety check before leaving the
+  // yard and after returning, on top of the routed driving time.
+  const walkaroundHours = (Number(gv.walkaroundCheckMinutes ?? 30) * 2) / 60;
+  const drivingHours = (input.totalDurationMinutes / 60) + walkaroundHours;
   const operatingDays = calculateOperatingDays(departureDate, returnDate);
   const requestedWaitingHours = (Number(waitingMins) || 0) / 60;
   waitingHours = requestedWaitingHours;
@@ -327,17 +340,29 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       // every defined journey class; their configured rates remain reporting inputs.
       standingCost = 0;
       overnightCost = 0;
-      waitingCharge = waitingHours * configuredNumber('waiting charge per hour', [gv.waitingChargePerHour]);
-      const sellingRate = configuredNumber(
-        `${journeyType} selling rate per km`,
-        [journeyType === 'return' ? vehicle.sellingRateReturn : vehicle.sellingRateOneWay],
-        { positive: true }
-      );
+      // These, like minimum hire above, degrade to a safe default instead of
+      // refusing the quote when unset — the profit floor below still catches
+      // underpricing, so a config gap here should reduce quote quality, not
+      // block the customer from getting a price at all.
+      waitingCharge = waitingHours * configuredNumber('waiting charge per hour', [gv.waitingChargePerHour, 0]);
+      const rawSellingRate = Number(journeyType === 'return' ? vehicle.sellingRateReturn : vehicle.sellingRateOneWay);
+      const sellingRate = Number.isFinite(rawSellingRate) && rawSellingRate > 0 ? rawSellingRate : 0;
       const includedKm = configuredNumber(
         `${journeyType} included mileage`,
-        [journeyType === 'return' ? vehicle.includedKmReturn : vehicle.includedKmOneWay]
+        [journeyType === 'return' ? vehicle.includedKmReturn : vehicle.includedKmOneWay, 0]
       );
-      const minimumHire = configuredNumber('vehicle minimum hire', [vehicle.minimumHire], { positive: true });
+      // vehicle.minimumHire is normally kept in sync by the admin config save
+      // (see admin_configController.ts) and falls back to computing it live
+      // from fleet economics. If neither is available (fleet count,
+      // utilisation days or annual costs still incomplete for this vehicle),
+      // degrade to 0 rather than refusing the quote — the accounting-cost
+      // profit floor below still guarantees the customer is never quoted
+      // below cost, so a missing minimum-hire figure should never be the
+      // thing that blocks a customer from getting a price.
+      const liveMinHire = fleetEconomics(data).vehicleBreakdown.find((v: any) => v.id === vehicleId)?.minHirePerDay;
+      // Fleet economics is authoritative; a previously stored manual value must
+      // not survive an overhead, fleet-count, or utilisation change.
+      const minimumHire = Number(liveMinHire) > 0 ? Number(liveMinHire) : 0;
       baseFare = minimumHire + Math.max(0, totalKm - includedKm) * sellingRate;
       preSurchargeBase = baseFare + waitingCharge;
     }
@@ -474,6 +499,9 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       pricingMethod: template ? 'fixed-route' : isManualQuote ? 'cost-model' : 'pricing-matrix',
       breakdown: {
         distanceCost: Math.round(distanceCost * 100) / 100,
+        fuelCost: Math.round(fuelCost * 100) / 100,
+        maintenanceCost: Math.round(maintenanceCost * 100) / 100,
+        tyreCost: Math.round(tyreCost * 100) / 100,
         driverCost: Math.round(driverCost * 100) / 100,
         standingCost,
         overnightCost,

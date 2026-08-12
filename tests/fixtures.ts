@@ -61,6 +61,7 @@ export function makePricingData() {
       ,dualDriverThresholdHours: 13
       ,waitingWageFactor: 0.75
       ,customerRangePct: 12
+      ,walkaroundCheckMinutes: 0
     },
     surcharges: {
       m6Toll: 6.5,

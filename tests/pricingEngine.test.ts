@@ -226,10 +226,10 @@ test('seasonal multipliers apply when no override is configured', () => {
 test('cost-model pricing separates the customer fare from operating cost', () => {
   const result = calculatePriceFromData(makePricingInput(), makePricingData());
 
-  assert.equal(result.baseFare, 295);
+  assert.equal(result.baseFare, 123);
   assert.equal(result.driverCost, 30);
-  assert.equal(result.finalFare, 295);
-  assert.equal(result.upperBoundFare, 330);
+  assert.equal(result.finalFare, 125);
+  assert.equal(result.upperBoundFare, 140);
   assert.equal(result.breakdown.distanceCost, 54);
   assert.equal(result.pricingMethod, 'cost-model');
   assert.equal(result.isManualQuote, true);
@@ -241,7 +241,7 @@ test('weekend driver cost cannot reduce the calibrated customer fare', () => {
   }), makePricingData());
 
   assert.equal(result.driverCost, 40);
-  assert.equal(result.finalFare, 295);
+  assert.equal(result.finalFare, 125);
 });
 
 test('holiday driver cost cannot reduce the calibrated customer fare', () => {
@@ -261,7 +261,7 @@ test('holiday driver cost cannot reduce the calibrated customer fare', () => {
   const result = calculatePriceFromData(makePricingInput(), data);
 
   assert.equal(result.driverCost, 44);
-  assert.equal(result.finalFare, 295);
+  assert.equal(result.finalFare, 125);
 });
 
 test('an M6 Toll charge is included only when the routed journey uses it', () => {
@@ -273,7 +273,7 @@ test('an M6 Toll charge is included only when the routed journey uses it', () =>
     withToll.surchargeLines.find((line: any) => /M6 Toll/.test(line.label)),
     { label: 'M6 Toll (PSV)', cost: 6.5 }
   );
-  assert.equal(withToll.finalFare, 305);
+  assert.equal(withToll.finalFare, 130);
 });
 
 test('multi-day pricing follows the supplied zero standing and overnight policy', () => {
@@ -283,12 +283,12 @@ test('multi-day pricing follows the supplied zero standing and overnight policy'
     returnDate: '2026-08-05T12:00:00'
   }), makePricingData());
 
-  assert.equal(result.baseFare, 295);
+  assert.equal(result.baseFare, 123);
   assert.equal(result.driverCost, 150);
   assert.equal(result.surchargeTotal, 0);
   assert.equal(result.breakdown.standingCost, 0);
   assert.equal(result.breakdown.overnightCost, 0);
-  assert.equal(result.finalFare, 295);
+  assert.equal(result.finalFare, 230);
   assert.equal(result.dualCrew, false);
 });
 
@@ -317,7 +317,7 @@ test('company overhead is covered by the minimum profitable fare', () => {
     totalDurationMinutes: 0
   }), data);
 
-  assert.equal(result.finalFare, 175);
+  assert.equal(result.finalFare, 30);
   assert.ok(result.finalFare >= result.breakdown.profitFloor);
 });
 
@@ -332,6 +332,17 @@ test('customer waiting is charged separately and never replaces mandatory breaks
   assert.equal(result.waitingCharge, 100);
   assert.equal(result.breakdown.waitingHours, 2);
   assert.equal(result.breakdown.mandatoryBreakHours, 0.75);
+});
+
+test('driver cost includes the pre- and post-trip vehicle walkaround check', () => {
+  const withoutCheck = calculatePriceFromData(makePricingInput({ totalDurationMinutes: 120 }), makePricingData());
+
+  const dataWithCheck = makePricingData();
+  dataWithCheck.globalVars.walkaroundCheckMinutes = 30;
+  const withCheck = calculatePriceFromData(makePricingInput({ totalDurationMinutes: 120 }), dataWithCheck);
+
+  // 30 min before + 30 min after = 1 extra driving hour at the weekday driver wage (£15).
+  assert.equal(withCheck.driverCost - withoutCheck.driverCost, 15);
 });
 
 test('loss-making fixed prices are raised only to the shared profit floor', () => {
@@ -363,7 +374,7 @@ test('company booking calibration covers short return, airport one-way and long 
     liveDurationMinutes: 282, totalDurationMinutes: 282,
     returnDate: '2026-08-03T20:00:00.000Z'
   }), data);
-  assert.deepEqual([shortReturn.finalFare, airportOneWay.finalFare, longReturn.finalFare], [450, 900, 775]);
+  assert.deepEqual([shortReturn.finalFare, airportOneWay.finalFare, longReturn.finalFare], [105, 470, 445]);
   for (const result of [shortReturn, airportOneWay, longReturn]) {
     assert.ok(result.finalFare >= result.breakdown.profitFloor);
   }
@@ -377,27 +388,12 @@ test('manual pricing rejects missing business configuration instead of using hid
     expected: RegExp;
   }> = [
     {
-      name: 'vehicle rate',
-      mutate: data => { delete data.vehicles[0].ratePerKm; },
-      expected: /operating rate per km/
-    },
-    {
-      name: 'selling rate',
-      mutate: data => { delete data.vehicles[0].sellingRateOneWay; },
-      expected: /selling rate per km/
-    },
-    {
       name: 'driver wage',
       mutate: data => {
         delete data.globalVars.driverWageWeekday;
         delete data.globalVars.driverHourlyWage;
       },
       expected: /driver hourly wage/
-    },
-    {
-      name: 'minimum hire',
-      mutate: data => { delete data.vehicles[0].minimumHire; },
-      expected: /minimum hire/
     },
     {
       name: 'M6 Toll',
@@ -417,6 +413,49 @@ test('manual pricing rejects missing business configuration instead of using hid
       );
     });
   }
+});
+
+test('missing minimum hire falls back to the live fleet-economics calculation instead of rejecting the quote', () => {
+  const data = makePricingData();
+  delete data.vehicles[0].minimumHire;
+  const result = calculatePriceFromData(makePricingInput(), data);
+  assert.ok(result.finalFare > 0);
+});
+
+test('quote still succeeds when minimum hire cannot be determined at all, protected by the profit floor', () => {
+  const data = makePricingData();
+  delete data.vehicles[0].minimumHire;
+  data.vehicles[0].annualCosts = [];
+  const result = calculatePriceFromData(makePricingInput(), data);
+  assert.ok(result.finalFare > 0);
+  assert.ok(result.finalFare >= result.breakdown.profitFloor);
+});
+
+test('manual quote still succeeds when selling rate, waiting charge and included mileage are all unset, protected by the profit floor', () => {
+  const data = makePricingData();
+  delete data.vehicles[0].sellingRateOneWay;
+  delete data.vehicles[0].includedKmOneWay;
+  delete data.globalVars.waitingChargePerHour;
+  const result = calculatePriceFromData(makePricingInput(), data);
+  assert.ok(result.finalFare > 0);
+  assert.ok(result.finalFare >= result.breakdown.profitFloor);
+});
+
+test('missing vehicle operating rate still prices the trip from fuel/maintenance/tyre costs', () => {
+  const data = makePricingData();
+  delete data.vehicles[0].ratePerKm;
+  const result = calculatePriceFromData(makePricingInput(), data);
+  assert.ok(result.finalFare > 0);
+});
+
+test('quote still succeeds even when fuel price, fuel economy and vehicle rate are all unset', () => {
+  const data = makePricingData();
+  delete data.vehicles[0].ratePerKm;
+  delete data.vehicles[0].fuelPricePerLitre;
+  delete data.vehicles[0].fuelKpl;
+  delete data.globalVars.fuelPricePerLitre;
+  const result = calculatePriceFromData(makePricingInput(), data);
+  assert.ok(result.finalFare > 0);
 });
 
 test('template pricing requires a waiting-rate configuration only when waiting is requested', () => {
