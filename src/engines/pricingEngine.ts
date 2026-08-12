@@ -256,7 +256,8 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       : gv.driverWageWeekday;
   const driverWage = configuredNumber('driver hourly wage', [configuredDriverWage, gv.driverHourlyWage], { positive: true });
   appliedDriverRate = driverWage;
-  const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor ?? 0.75], { positive: true });
+  // A zero factor is valid when waiting time should not add wage cost.
+  const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor ?? 0.75]);
   const dailyDrivingHours = drivingHours / operatingDays;
   const dailyDrivingLimit = Math.min(9, configuredNumber('daily driving limit', [gv.dualDriverThresholdHours ?? 9], { positive: true }));
   const driverCount = Math.max(1, Math.ceil(dailyDrivingHours / dailyDrivingLimit));
