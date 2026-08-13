@@ -203,6 +203,28 @@ function normalizeAccessData(data: DatabaseSchema) {
   return changed;
 }
 
+function normalizeVehicleCostAliases(data: DatabaseSchema) {
+  let changed = false;
+  for (const vehicle of data.vehicles || []) {
+    const record = vehicle as any;
+    const source = Array.isArray(record.annualFixedCosts)
+      ? record.annualFixedCosts
+      : Array.isArray(record.annualCosts) ? record.annualCosts : undefined;
+    if (!source) continue;
+    const costs = source.map((cost: any, index: number) => {
+      const label = String(cost?.label || cost?.name || '').trim() || 'Unnamed Cost';
+      const amount = Number(cost?.cost ?? cost?.amount ?? 0);
+      return { id: cost?.id ?? index + 1, label, name: label, cost: Number.isFinite(amount) && amount >= 0 ? amount : 0, amount: Number.isFinite(amount) && amount >= 0 ? amount : 0 };
+    });
+    if (JSON.stringify(record.annualCosts) !== JSON.stringify(costs) || JSON.stringify(record.annualFixedCosts) !== JSON.stringify(costs)) {
+      record.annualCosts = costs;
+      record.annualFixedCosts = costs;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 class KVAdapter {
   async read(env: any): Promise<DatabaseSchema | null> {
     try {
@@ -375,7 +397,7 @@ export async function initDatabase(env: any): Promise<DB> {
     db.data = createEmptyDatabase();
     applySupervisorPricingMigration(db.data);
     await db.write();
-  } else if (applySupervisorPricingMigration(db.data) || normalizeAccessData(db.data)) {
+  } else if (applySupervisorPricingMigration(db.data) || normalizeAccessData(db.data) || normalizeVehicleCostAliases(db.data)) {
     await db.write();
   }
 
@@ -392,6 +414,7 @@ export async function getDatabase(env: any): Promise<DB> {
     
     if (Date.now() - db.lastFetchTime > 2000) {
       await db.read();
+      if (db.data && normalizeVehicleCostAliases(db.data)) await db.write();
     }
   }
   return db!;
