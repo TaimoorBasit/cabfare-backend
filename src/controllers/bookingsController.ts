@@ -83,8 +83,7 @@ export const postHandler = async (req: Request, res: Response) => {
 
     db.data.bookings.unshift(newBooking);
     addActivity(db, 'booking', `New booking ${newBooking.id} received`, req.adminUser);
-    await db.write();
-    try { await db.writeBookings(db.data.bookings); } catch (indexError) { console.error('Booking index write failed:', indexError); }
+    await db.writeBookings(db.data.bookings);
 
     return res.status(201).json({ success: true, booking: newBooking });
   } catch (error: any) {
@@ -119,8 +118,7 @@ export const putHandler = async (req: Request, res: Response) => {
     };
     db.data.bookings[index] = updatedBooking;
     addActivity(db, 'booking', `Updated booking ${id}`, req.adminUser);
-    await db.write();
-    try { await db.writeBookings(db.data.bookings); } catch (indexError) { console.error('Booking index write failed:', indexError); }
+    await db.writeBookings(db.data.bookings);
 
     return res.json({ success: true, booking: updatedBooking });
   } catch (error: any) {
@@ -138,8 +136,7 @@ export const deleteHandler = async (req: Request, res: Response) => {
     db.data.bookings = (db.data.bookings || []).filter((booking: any) => booking.id !== id);
     if (db.data.bookings.length === before) return res.status(404).json({ error: 'Booking not found' });
     addActivity(db, 'booking', `Deleted booking ${id}`, req.adminUser);
-    await db.write();
-    try { await db.writeBookings(db.data.bookings); } catch (indexError) { console.error('Booking index write failed:', indexError); }
+    await db.writeBookings(db.data.bookings);
     return res.json({ success: true });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Unable to delete booking' });
