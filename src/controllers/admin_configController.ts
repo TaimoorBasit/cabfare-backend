@@ -265,6 +265,8 @@ export const postHandler = async (req: Request, res: Response) => {
     }
   }
   if (db.data) {
+    const savedBookings = await db.readBookings();
+    if (savedBookings) db.data.bookings = savedBookings;
     if (config.vehicles) db.data.vehicles = config.vehicles;
     if (config.globalVars) {
       db.data.globalVars = {

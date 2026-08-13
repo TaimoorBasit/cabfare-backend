@@ -351,6 +351,20 @@ export class DB {
     await operation;
     this.lastFetchTime = Date.now();
   }
+
+  async readBookings(): Promise<any[] | null> {
+    if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.get === 'function') {
+      const value = await this.env.CABFARE_DB.get('cabfare_bookings', 'json');
+      return Array.isArray(value) ? value : null;
+    }
+    return null;
+  }
+
+  async writeBookings(bookings: any[]) {
+    if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.put === 'function') {
+      await this.env.CABFARE_DB.put('cabfare_bookings', JSON.stringify(bookings || []));
+    }
+  }
 }
 
 export function applySupervisorPricingMigration(data: DatabaseSchema) {
