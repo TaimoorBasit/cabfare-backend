@@ -135,6 +135,13 @@ export const postHandler = async (req: Request, res: Response) => {
           }
         }
       }
+      // Both names are legacy aliases. Keep one canonical list so clearing a
+      // vehicle cost cannot leave stale rows to resurrect on the next read.
+      if (v.annualFixedCosts !== undefined || v.annualCosts !== undefined) {
+        const costs = Array.isArray(v.annualFixedCosts) ? v.annualFixedCosts : v.annualCosts;
+        v.annualCosts = costs;
+        v.annualFixedCosts = costs;
+      }
       return v;
     });
   }
@@ -297,4 +304,3 @@ export const postHandler = async (req: Request, res: Response) => {
   }
   return res.json({ success: true });
 }
-
