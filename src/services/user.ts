@@ -2,6 +2,9 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { getDatabase, User } from '../database/db';
 
+const ACTIVITY_WRITE_INTERVAL_MS = 5 * 60 * 1000;
+const lastActivityWrite = new Map<string, number>();
+
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
 }
@@ -109,8 +112,11 @@ export async function recordSessionHeartbeat(userId: string, env: any, stop = fa
   const db = await getDatabase(env);
   const user = db.data?.users.find(item => item.id === userId);
   if (!db.data || !user || !user.sessionStartedAt) return;
+  const now = Date.now();
+  if (!stop && now - (lastActivityWrite.get(userId) || 0) < ACTIVITY_WRITE_INTERVAL_MS) return;
   recordSessionTime(user, new Date(), stop);
   await db.write();
+  lastActivityWrite.set(userId, now);
 }
 
 export async function touchUserActivity(userId: string, env: any) {
@@ -122,9 +128,11 @@ export async function touchUserActivity(userId: string, env: any) {
   const previous = user.lastActiveAt ? new Date(user.lastActiveAt).getTime() : now;
   const elapsedMinutes = Math.max(0, (now - previous) / 60000);
   if (elapsedMinutes < 1) return;
+  if (now - (lastActivityWrite.get(userId) || 0) < ACTIVITY_WRITE_INTERVAL_MS) return;
   user.usageMinutes = (Number(user.usageMinutes) || 0) + Math.min(5, elapsedMinutes);
   const addedMinutes = Math.min(5, elapsedMinutes);
   user.lastActiveAt = new Date(now).toISOString();
   recordDailyUsage(user, new Date(now), addedMinutes);
   await db.write();
+  lastActivityWrite.set(userId, now);
 }
