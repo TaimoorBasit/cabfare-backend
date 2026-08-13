@@ -274,17 +274,13 @@ export const postHandler = async (req: Request, res: Response) => {
     if (config.annualOverheads) db.data.annualOverheads = config.annualOverheads;
 
     // Minimum hire is derived from fleet economics (standing + overhead per
-    // day), never hand-typed — recompute and persist it on every save so it
-    // always reflects current overheads, fleet count and utilisation days.
-    // Only overwrite when the computed value is actually usable: a vehicle
-    // with incomplete fleet-economics inputs (no fleet count, no utilisation
-    // days, no annual costs) computes to 0, and writing that over a working
-    // minimumHire would silently break every quote for that vehicle.
+    // day), never hand-typed. Persist zero too: clearing all fixed costs is a
+    // valid setting and must not resurrect the previous minimum hire on refresh.
     if (Array.isArray(db.data.vehicles)) {
       const economics = fleetEconomics(db.data);
       db.data.vehicles = db.data.vehicles.map((vehicle: any) => {
         const match = economics.vehicleBreakdown.find((v: any) => v.id === vehicle.id);
-        return match && Number(match.minHirePerDay) > 0 ? { ...vehicle, minimumHire: match.minHirePerDay } : vehicle;
+        return match ? { ...vehicle, minimumHire: Number(match.minHirePerDay) || 0 } : vehicle;
       });
     }
 
@@ -301,5 +297,4 @@ export const postHandler = async (req: Request, res: Response) => {
   }
   return res.json({ success: true });
 }
-
 
