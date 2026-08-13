@@ -74,7 +74,7 @@ export const postHandler = async (req: Request, res: Response) => {
     }
 
     const newBooking = {
-      id: 'BK-' + Date.now().toString(36).toUpperCase(),
+      id: 'BK' + Date.now().toString(36).toUpperCase(),
       createdAt: new Date().toISOString(),
       status: 'new',
       ...payload,
