@@ -9,5 +9,12 @@
       "binding": "CABFARE_DB",
       "id": "162fd13751b1427e840f4a93442513ac"
     }
+  ],
+  "d1_databases": [
+    {
+      "binding": "CABFARE_D1",
+      "database_name": "cabfare-db",
+      "database_id": "5544199f-0801-4b87-8e75-ec6ddd22d1c4"
+    }
   ]
 }

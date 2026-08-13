@@ -229,12 +229,21 @@ class KVAdapter {
   async read(env: any): Promise<DatabaseSchema | null> {
     try {
       if (!env) throw new Error("Environment configuration is missing");
+      const d1 = env.CABFARE_D1 && typeof env.CABFARE_D1.prepare === 'function' ? env.CABFARE_D1 : null;
+      if (d1) {
+        const row = await d1.prepare('SELECT state FROM database_state WHERE id = 1').first();
+        if (row?.state) return JSON.parse(String(row.state)) as DatabaseSchema;
+      }
       const cloudflareKv = env.CABFARE_DB && typeof env.CABFARE_DB.get === 'function'
         ? env.CABFARE_DB
         : null;
       if (cloudflareKv) {
         const storedData = await cloudflareKv.get('cabfare_db', 'json');
-        if (storedData) return storedData as DatabaseSchema;
+        if (storedData) {
+          const migrated = storedData as DatabaseSchema;
+          if (d1) await d1.prepare('INSERT INTO database_state (id, state, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at').bind(JSON.stringify(migrated), new Date().toISOString()).run();
+          return migrated;
+        }
       }
       const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
       const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
@@ -286,6 +295,11 @@ class KVAdapter {
   async write(data: DatabaseSchema, env: any): Promise<void> {
     try {
       if (!env) throw new Error("Environment configuration is missing");
+      const d1 = env.CABFARE_D1 && typeof env.CABFARE_D1.prepare === 'function' ? env.CABFARE_D1 : null;
+      if (d1) {
+        await d1.prepare('INSERT INTO database_state (id, state, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at').bind(JSON.stringify(data), new Date().toISOString()).run();
+        return;
+      }
       if (env.CABFARE_DB && typeof env.CABFARE_DB.put === 'function') {
         await env.CABFARE_DB.put('cabfare_db', JSON.stringify(data));
         return;
@@ -353,6 +367,7 @@ export class DB {
   }
 
   async readBookings(): Promise<any[] | null> {
+    if (this.env?.CABFARE_D1 && this.data?.bookings) return this.data.bookings;
     if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.get === 'function') {
       const value = await this.env.CABFARE_DB.get('cabfare_bookings', 'json');
       return Array.isArray(value) ? value : null;
@@ -361,6 +376,10 @@ export class DB {
   }
 
   async writeBookings(bookings: any[]) {
+    if (this.env?.CABFARE_D1) {
+      await this.write();
+      return;
+    }
     if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.put === 'function') {
       await this.env.CABFARE_DB.put('cabfare_bookings', JSON.stringify(bookings || []));
     }
