@@ -419,33 +419,44 @@ export function applySupervisorPricingMigration(data: DatabaseSchema) {
 }
 
 let db: DB | null = null;
+let databaseInitPromise: Promise<DB> | null = null;
+const DATABASE_REFRESH_INTERVAL_MS = 30_000;
 
 export async function initDatabase(env: any): Promise<DB> {
-  if (db) return db;
+  if (db?.data) return db;
+  if (databaseInitPromise) return databaseInitPromise;
 
-  db = new DB(env);
-  await db.read();
+  databaseInitPromise = (async () => {
+    db ||= new DB(env);
+    await db.read();
 
-  if (!db.data || Object.keys(db.data).length === 0) {
-    db.data = createEmptyDatabase();
-    applySupervisorPricingMigration(db.data);
-    await db.write();
-  } else if (applySupervisorPricingMigration(db.data) || normalizeAccessData(db.data) || normalizeVehicleCostAliases(db.data)) {
-    await db.write();
+    if (!db.data || Object.keys(db.data).length === 0) {
+      db.data = createEmptyDatabase();
+      applySupervisorPricingMigration(db.data);
+      await db.write();
+    } else if (applySupervisorPricingMigration(db.data) || normalizeAccessData(db.data) || normalizeVehicleCostAliases(db.data)) {
+      await db.write();
+    }
+
+    return db;
+  })();
+
+  try {
+    return await databaseInitPromise;
+  } finally {
+    databaseInitPromise = null;
   }
-
-  return db;
 }
 
 export async function getDatabase(env: any): Promise<DB> {
-  if (!db) {
-    await initDatabase(env);
+  if (!db?.data) {
+    return initDatabase(env);
   } else {
     
     db.env = env;
     
     
-    if (Date.now() - db.lastFetchTime > 2000) {
+    if (Date.now() - db.lastFetchTime > DATABASE_REFRESH_INTERVAL_MS) {
       await db.read();
       if (db.data && normalizeVehicleCostAliases(db.data)) await db.write();
     }
