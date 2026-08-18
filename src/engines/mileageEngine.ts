@@ -60,6 +60,12 @@ export function resolveRoutePoints(journey: any) {
 }
 
 const mileageCache = new Map<string, any>();
+const mileageCacheTtlSeconds = 900;
+
+async function mileageCacheId(value: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
 
 export async function calculateMileage(journey: any, env: any) {
   const db = await getDatabase(env);
@@ -93,9 +99,24 @@ export async function calculateMileage(journey: any, env: any) {
   const sameCalendarDay = Boolean(returning) && departure.toDateString() === returning!.toDateString();
   const journeyClass = !isReturn ? 'ONE_WAY' : sameCalendarDay ? 'SAME_DAY_RETURN' : 'MULTI_DAY_RETURN';
   const cacheWindow = Math.floor(Date.now() / 900000);
-  const cacheKey = JSON.stringify({ liveOrigin, liveDestination, liveWaypoints, yardLoc, journeyClass, distanceUnit, cacheWindow });
+  const emptyLegThresholdKm = Number(db.data?.globalVars?.emptyLegThresholdKm ?? 20);
+  const cacheKey = JSON.stringify({ liveOrigin, liveDestination, liveWaypoints, yardLoc, journeyClass, distanceUnit, emptyLegThresholdKm, cacheWindow });
   if (mileageCache.has(cacheKey)) {
     return await mileageCache.get(cacheKey);
+  }
+
+  const durableCache = env?.CABFARE_DB && typeof env.CABFARE_DB.get === 'function' ? env.CABFARE_DB : null;
+  const durableKey = `cabfare:mileage:${await mileageCacheId(cacheKey)}`;
+  if (durableCache) {
+    try {
+      const cached = await durableCache.get(durableKey, 'json');
+      if (cached) {
+        mileageCache.set(cacheKey, Promise.resolve(cached));
+        return cached;
+      }
+    } catch (error) {
+      console.warn('Durable mileage cache read failed:', error);
+    }
   }
 
   const mileagePromise = (async () => {
@@ -109,7 +130,6 @@ export async function calculateMileage(journey: any, env: any) {
     const deadOutDirections = await getDirections(yardLoc, liveOrigin, [], apiKey);
     const rawDeadOutDistanceMeters = sumLegs(deadOutDirections.routes[0].legs, 'distance');
     const rawDeadOutDurationSeconds = sumLegs(deadOutDirections.routes[0].legs, 'duration');
-    const emptyLegThresholdKm = Number(db.data?.globalVars?.emptyLegThresholdKm ?? 20);
     const includeDeadOut = rawDeadOutDistanceMeters / 1000 >= emptyLegThresholdKm;
     const deadOutDistanceMeters = includeDeadOut ? rawDeadOutDistanceMeters : 0;
     const deadOutDurationSeconds = includeDeadOut ? rawDeadOutDurationSeconds : 0;
@@ -145,6 +165,13 @@ export async function calculateMileage(journey: any, env: any) {
       geometry: liveDirections.routes[0].overview_polyline.points,
       legs: liveDirections.routes[0].legs
     };
+    if (durableCache) {
+      try {
+        await durableCache.put(durableKey, JSON.stringify(result), { expirationTtl: mileageCacheTtlSeconds });
+      } catch (error) {
+        console.warn('Durable mileage cache write failed:', error);
+      }
+    }
     return result;
   } catch (error: any) {
     console.error("Mileage engine error:", error);

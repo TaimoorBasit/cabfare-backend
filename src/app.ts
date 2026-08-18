@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { compress } from 'hono/compress';
 
 const app = new Hono();
 
@@ -9,6 +10,7 @@ app.use('*', cors({
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   maxAge: 86400
 }));
+app.use('*', compress());
 
 
 app.get('/health', (c) => {
