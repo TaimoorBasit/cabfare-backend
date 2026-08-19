@@ -25,8 +25,8 @@ test('directions rejects Google HTTP and route-status failures', async (t) => {
   globalThis.fetch = async () => new Response('unavailable', { status: 503, statusText: 'Unavailable' });
   await assert.rejects(getDirections('Alpha', 'Beta', [], 'test-key'), /Google Maps API error/);
 
-  globalThis.fetch = async () => Response.json({ status: 'ZERO_RESULTS', error_message: 'No road route' });
-  await assert.rejects(getDirections('Alpha', 'Beta', [], 'test-key'), /ZERO_RESULTS.*No road route/);
+  globalThis.fetch = async () => Response.json({ status: 'REQUEST_DENIED', error_message: 'Denied' });
+  await assert.rejects(getDirections('Alpha', 'Beta', [], 'test-key'), /REQUEST_DENIED.*Denied/);
 });
 
 test('mileage calculation fails closed and never substitutes fabricated distances', async (t) => {
@@ -61,7 +61,7 @@ test('directions returns the real provider payload on success', async (t) => {
   assert.deepEqual(await getDirections('Alpha', 'Beta', [], 'test-key'), payload);
 });
 
-test('directions geocodes typed UK addresses after NOT_FOUND and retries with coordinates', async (t) => {
+test('directions geocodes typed UK addresses after ZERO_RESULTS and retries with coordinates', async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
   const requested: string[] = [];
@@ -73,7 +73,7 @@ test('directions geocodes typed UK addresses after NOT_FOUND and retries with co
       return Response.json({ status: 'OK', results: [{ geometry: { location: { lat, lng: -1.9 } } }] });
     }
     if (requested.filter(item => item.includes('/directions/')).length === 1) {
-      return Response.json({ status: 'NOT_FOUND' });
+      return Response.json({ status: 'ZERO_RESULTS' });
     }
     return Response.json({ status: 'OK', routes: [{ legs: [] }] });
   };

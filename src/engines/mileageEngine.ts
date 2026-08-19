@@ -21,7 +21,7 @@ export async function getDirections(origin: any, destination: any, waypoints: an
   };
 
   let data = await request(origin, destination, waypoints);
-  if (data.status === 'NOT_FOUND') {
+  if (data.status === 'NOT_FOUND' || data.status === 'ZERO_RESULTS') {
     const resolved = await Promise.all([origin, ...waypoints, destination].map(loc => geocodeLocation(loc, apiKey)));
     data = await request(resolved[0], resolved[resolved.length - 1], resolved.slice(1, -1));
   }
