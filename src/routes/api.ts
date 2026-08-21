@@ -57,7 +57,8 @@ const createShim = (handler: any) => {
             query: c.req.query(),
             headers: c.req.header(),
             env: env(c),
-            adminUser: c.get('adminUser')
+            adminUser: c.get('adminUser'),
+            waitUntil: (p: Promise<any>) => { c.executionCtx?.waitUntil ? c.executionCtx.waitUntil(p) : p.catch(() => {}); }
         };
         let responseSent = false;
         let responsePayload: any = null;
