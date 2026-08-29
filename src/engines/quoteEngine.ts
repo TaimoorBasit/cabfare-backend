@@ -56,7 +56,7 @@ export async function generateQuotes(journey: any, env: any) {
       /m6\s*toll/i.test(String(step.html_instructions || ''))
     )
   );
-  const totalWaitingMinutes = calculateTotalWaitingMinutes(journey);
+  const totalWaitingMinutes = (Number(mileageResult.automaticWaitingMinutes) || 0) + calculateTotalWaitingMinutes(journey);
 
   const quotes = [];
 
@@ -110,7 +110,7 @@ export async function generateQuotes(journey: any, env: any) {
         revenueKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.liveKm / 1.60934 : mileageResult.liveKm),
         chargedKm: Math.round(mileageResult.totalKm),
         customerKm: Math.round(mileageResult.liveKm),
-        deadKm: Math.round(mileageResult.deadKm),
+        deadKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.deadKm / 1.60934 : mileageResult.deadKm),
         journeyClass: mileageResult.journeyClass,
         emptyLegApplied: mileageResult.emptyLegApplied,
         vehicleCount: requiredVehicles,

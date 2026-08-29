@@ -500,6 +500,8 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       pricingMethod: template ? 'fixed-route' : isManualQuote ? 'cost-model' : 'pricing-matrix',
       breakdown: {
         distanceCost: Math.round(distanceCost * 100) / 100,
+        liveDistanceCost: Math.round((totalKm > 0 ? distanceCost * liveKm / totalKm : 0) * 100) / 100,
+        deadDistanceCost: Math.round((totalKm > 0 ? distanceCost * deadKm / totalKm : 0) * 100) / 100,
         fuelCost: Math.round(fuelCost * 100) / 100,
         maintenanceCost: Math.round(maintenanceCost * 100) / 100,
         tyreCost: Math.round(tyreCost * 100) / 100,

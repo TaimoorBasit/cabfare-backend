@@ -90,8 +90,8 @@ export async function calculateMileage(journey: any, env: any) {
   const liveOrigin = livePoints[0];
   const liveDestination = livePoints[livePoints.length - 1];
   const liveWaypoints = livePoints.slice(1, -1);
-
   const isReturn = journey.journeyType === 'return';
+
   const distanceUnit = db.data?.globalVars?.distanceUnit;
   if (distanceUnit !== 'km' && distanceUnit !== 'miles') throw new MileageUnavailableError('Mileage calculation is unavailable: distance unit is not configured');
   const departure = new Date(journey.departureDate);
@@ -133,21 +133,27 @@ export async function calculateMileage(journey: any, env: any) {
     const includeDeadOut = rawDeadOutDistanceMeters / 1000 >= emptyLegThresholdKm;
     const deadOutDistanceMeters = includeDeadOut ? rawDeadOutDistanceMeters : 0;
     const deadOutDurationSeconds = includeDeadOut ? rawDeadOutDurationSeconds : 0;
+    const automaticWaitingMinutes = journeyClass === 'SAME_DAY_RETURN'
+      ? Math.max(0, (new Date(journey.returnDate).getTime() - (departure.getTime() + (deadOutDurationSeconds + liveDurationSeconds) * 1000)) / 60000)
+      : 0;
 
-    const isReturn = journey.journeyType === 'return';
     if (isReturn) {
-      liveDistanceMeters *= 2;
-      liveDurationSeconds *= 2;
+      const returnDirections = await getDirections(liveDestination, liveOrigin, [...liveWaypoints].reverse(), apiKey);
+      liveDistanceMeters += sumLegs(returnDirections.routes[0].legs, 'distance');
+      liveDurationSeconds += sumLegs(returnDirections.routes[0].legs, 'duration');
     }
 
-    // Supervisor policy: one-way and same-day returns do not charge a yard return.
-    // A multi-day return charges the destination-to-yard reposition after outbound.
+    // The vehicle starts and finishes at the configured yard for every return booking.
     let deadBackDistanceMeters = 0;
     let deadBackDurationSeconds = 0;
-    if (journeyClass === 'MULTI_DAY_RETURN') {
-      const deadBackDirections = await getDirections(liveDestination, yardLoc, [], apiKey);
-      deadBackDistanceMeters = sumLegs(deadBackDirections.routes[0].legs, 'distance');
-      deadBackDurationSeconds = sumLegs(deadBackDirections.routes[0].legs, 'duration');
+    {
+      const deadBackOrigin = isReturn ? liveOrigin : liveDestination;
+      const deadBackDirections = await getDirections(deadBackOrigin, yardLoc, [], apiKey);
+      const rawDeadBackDistanceMeters = sumLegs(deadBackDirections.routes[0].legs, 'distance');
+      if (rawDeadBackDistanceMeters / 1000 >= emptyLegThresholdKm) {
+        deadBackDistanceMeters = rawDeadBackDistanceMeters;
+        deadBackDurationSeconds = sumLegs(deadBackDirections.routes[0].legs, 'duration');
+      }
     }
 
     const liveKm = liveDistanceMeters / divisor;
@@ -159,6 +165,7 @@ export async function calculateMileage(journey: any, env: any) {
       totalKm: liveKm + deadKm,
       liveDurationMinutes: liveDurationSeconds / 60,
       totalDurationMinutes: (liveDurationSeconds + deadOutDurationSeconds + deadBackDurationSeconds) / 60,
+      automaticWaitingMinutes,
       journeyClass,
       emptyLegApplied: includeDeadOut,
       emptyLegThresholdKm,
