@@ -99,7 +99,7 @@ export async function calculateMileage(journey: any, env: any) {
   const sameCalendarDay = Boolean(returning) && departure.toDateString() === returning!.toDateString();
   const journeyClass = !isReturn ? 'ONE_WAY' : sameCalendarDay ? 'SAME_DAY_RETURN' : 'MULTI_DAY_RETURN';
   const cacheWindow = Math.floor(Date.now() / 900000);
-  const emptyLegThresholdKm = Number(db.data?.globalVars?.emptyLegThresholdKm ?? 20);
+  const emptyLegThresholdKm = Number(journey.emptyLegThresholdKm ?? 20);
   const cacheKey = JSON.stringify({ liveOrigin, liveDestination, liveWaypoints, yardLoc, journeyClass, distanceUnit, emptyLegThresholdKm, cacheWindow });
   if (mileageCache.has(cacheKey)) {
     return await mileageCache.get(cacheKey);

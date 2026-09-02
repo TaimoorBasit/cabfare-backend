@@ -50,14 +50,6 @@ export async function generateQuotes(journey: any, env: any) {
     }
   }
 
-  const mileageResult = await calculateMileage(journey, env);
-  const usesM6Toll = (mileageResult.legs || []).some((leg: any) =>
-    (leg.steps || []).some((step: any) =>
-      /m6\s*toll/i.test(String(step.html_instructions || ''))
-    )
-  );
-  const totalWaitingMinutes = (Number(mileageResult.automaticWaitingMinutes) || 0) + calculateTotalWaitingMinutes(journey);
-
   const quotes = [];
 
   for (const vehicle of data.vehicles as any[]) {
@@ -71,6 +63,15 @@ export async function generateQuotes(journey: any, env: any) {
       handbagCount: journey.handbagCount
     }, env);
     if (!isAvailable) continue;
+
+    const mileageResult = await calculateMileage({
+      ...journey,
+      emptyLegThresholdKm: Number(vehicle.pricingSettings?.emptyLegThresholdKm ?? 20)
+    }, env);
+    const usesM6Toll = (mileageResult.legs || []).some((leg: any) =>
+      (leg.steps || []).some((step: any) => /m6\s*toll/i.test(String(step.html_instructions || '')))
+    );
+    const totalWaitingMinutes = (Number(mileageResult.automaticWaitingMinutes) || 0) + calculateTotalWaitingMinutes(journey);
 
     const usableCapacity = vehicle.capacity || 1;
     const requiredVehicles = Math.max(1, Math.ceil(passengers / usableCapacity));
