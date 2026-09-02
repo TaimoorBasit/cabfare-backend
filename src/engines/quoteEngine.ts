@@ -75,7 +75,7 @@ export async function generateQuotes(journey: any, env: any) {
     );
     const totalWaitingMinutes = (Number(mileageResult.automaticWaitingMinutes) || 0) + calculateTotalWaitingMinutes(journey);
 
-    const usableCapacity = vehicle.capacity || 1;
+    const usableCapacity = /premium coach/i.test(String(vehicle.name || '')) ? 50 : (vehicle.capacity || 1);
     const requiredVehicles = Math.max(1, Math.ceil(passengers / usableCapacity));
     const paxPerVehicle = Math.ceil(passengers / requiredVehicles);
     const suitcasesPerVehicle = Math.ceil((journey.suitcaseCount || 0) / requiredVehicles);
@@ -106,7 +106,7 @@ export async function generateQuotes(journey: any, env: any) {
     
 
     quotes.push({
-      vehicle,
+      vehicle: usableCapacity === vehicle.capacity ? vehicle : { ...vehicle, capacity: usableCapacity },
       result: {
         distanceUnit: data.globalVars?.distanceUnit,
         totalKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.totalKm / 1.60934 : mileageResult.totalKm),
