@@ -214,7 +214,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   let waitingHours = 0;
   let mandatoryBreakHours = 0;
 
-  const gv = data.globalVars || {};
+  const gv = { ...(data.globalVars || {}), ...(vehicle.pricingSettings || {}) };
   const totalKm = liveKm + deadKm;
   // Fuel price/economy fall back to the same defaults Admin itself uses when
   // a vehicle hasn't been fully configured (1.52/L, 5 km/L), so an
@@ -369,7 +369,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
     }
   }
 
-  const surcharges = data.surcharges || {};
+  const surcharges = vehicle.pricingSurcharges || data.surcharges || {};
   let surchargeTotal = 0;
   let surchargeLines: {label: string, cost: number}[] = [];
 
