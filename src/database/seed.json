@@ -140,7 +140,7 @@
       "quote": {
         "vehicle": {
           "id": "minibus",
-          "name": "Executive Minibus",
+          "name": "Minibus",
           "emoji": "🚐",
           "desc": "Small groups & airport transfers",
           "capacity": 16,
@@ -1489,7 +1489,7 @@
       "quote": {
         "vehicle": {
           "id": "minibus",
-          "name": "Executive Minibus",
+          "name": "Minibus",
           "emoji": "🚐",
           "desc": "Small groups & airport transfers",
           "capacity": 16,
@@ -2294,7 +2294,7 @@
   "vehicles": [
     {
       "id": "minibus",
-      "name": "Executive Minibus",
+      "name": "Minibus",
       "emoji": "minibus",
       "desc": "Small groups & airport transfers",
       "capacity": 16,
