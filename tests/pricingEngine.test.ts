@@ -231,6 +231,12 @@ test('cost-model pricing separates the customer fare from operating cost', () =>
   assert.equal(result.finalFare, 125);
   assert.equal(result.upperBoundFare, 140);
   assert.equal(result.breakdown.distanceCost, 54);
+  assert.equal(result.breakdown.atomicMileageCost, 54);
+  assert.equal(result.breakdown.totalOperatingCost, 64);
+  assert.equal(
+    result.breakdown.totalOperatingCost,
+    result.breakdown.fuelCost + result.breakdown.maintenanceCost + result.breakdown.tyreCost + result.breakdown.driverCost + result.breakdown.allocatedStanding + result.breakdown.allocatedOverhead
+  );
   assert.equal(result.pricingMethod, 'cost-model');
   assert.equal(result.isManualQuote, true);
 });

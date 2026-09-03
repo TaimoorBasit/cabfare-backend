@@ -240,6 +240,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   const fuelCost = totalKm * (fuelPrice / fuelKpl);
   const maintenanceCost = totalKm * maintenanceCostPerKm;
   const tyreCost = totalKm * tyreCostPerKm;
+  const atomicMileageCost = fuelCost + maintenanceCost + tyreCost;
 
   // Driver must walk around the vehicle for a safety check before leaving the
   // yard and after returning, on top of the routed driving time.
@@ -473,11 +474,11 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   const allocatedStanding = (Number(vehicleEconomics?.dailyStanding) || 0) * operatingDays;
   const allocatedOverhead = (Number(vehicleEconomics?.dailyOverhead) || 0) * operatingDays;
   if (!isManualQuote) standingCost = Math.round(allocatedStanding * 100) / 100;
-  const accountingCost = distanceCost + driverCost + standingCost + overnightCost + (isManualQuote ? allocatedStanding : 0) + allocatedOverhead + surchargeTotal;
+  const totalOperatingCost = atomicMileageCost + driverCost + standingCost + overnightCost + (isManualQuote ? allocatedStanding : 0) + allocatedOverhead + surchargeTotal;
   const netMarginPct = Math.max(5, configuredNumber('net margin percentage', [gv.netMarginPct ?? 5]));
   if (netMarginPct >= 100) throw new PricingConfigurationError('net margin percentage must be less than 100');
   const netProfitTarget = configuredNumber('minimum net profit', [gv.netProfitTarget ?? 0]);
-  const profitFloor = Math.max(accountingCost / (1 - netMarginPct / 100), accountingCost + netProfitTarget);
+  const profitFloor = Math.max(totalOperatingCost / (1 - netMarginPct / 100), totalOperatingCost + netProfitTarget);
   finalFare = Math.max(finalFare, profitFloor);
 
     const roundedFinalFare = Math.ceil(finalFare / 5) * 5;
@@ -500,11 +501,13 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       pricingMethod: template ? 'fixed-route' : isManualQuote ? 'cost-model' : 'pricing-matrix',
       breakdown: {
         distanceCost: Math.round(distanceCost * 100) / 100,
+        atomicMileageCost: Math.round(atomicMileageCost * 100) / 100,
         liveDistanceCost: Math.round((totalKm > 0 ? distanceCost * liveKm / totalKm : 0) * 100) / 100,
         deadDistanceCost: Math.round((totalKm > 0 ? distanceCost * deadKm / totalKm : 0) * 100) / 100,
         fuelCost: Math.round(fuelCost * 100) / 100,
         maintenanceCost: Math.round(maintenanceCost * 100) / 100,
         tyreCost: Math.round(tyreCost * 100) / 100,
+        totalOperatingCost: Math.round(totalOperatingCost * 100) / 100,
         driverCost: Math.round(driverCost * 100) / 100,
         standingCost,
         overnightCost,
