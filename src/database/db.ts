@@ -249,7 +249,7 @@ class KVAdapter {
         const storedData = await cloudflareKv.get('cabfare_db', 'json');
         if (storedData) {
           const migrated = storedData as DatabaseSchema;
-          if (d1) await d1.prepare('INSERT INTO database_state (id, state, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at').bind(JSON.stringify(migrated), new Date().toISOString()).run();
+          if (d1) d1.prepare('INSERT INTO database_state (id, state, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at').bind(JSON.stringify(migrated), new Date().toISOString()).run().catch(() => {});
           return migrated;
         }
       }
