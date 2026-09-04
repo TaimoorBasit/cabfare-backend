@@ -239,8 +239,15 @@ class KVAdapter {
       if (!env) throw new Error("Environment configuration is missing");
       const fastKv = env.CABFARE_DB && typeof env.CABFARE_DB.get === 'function' ? env.CABFARE_DB : null;
       if (fastKv) {
-        const storedData = await fastKv.get('cabfare_db', 'json');
-        if (storedData) return storedData as DatabaseSchema;
+        try {
+          const storedData = await Promise.race([
+            fastKv.get('cabfare_db', 'json'),
+            new Promise<null>((_, reject) => setTimeout(() => reject(new Error('KV read timed out')), 5000))
+          ]);
+          if (storedData) return storedData as DatabaseSchema;
+        } catch (error) {
+          console.warn('KV read unavailable; trying D1 fallback:', error);
+        }
       }
       const d1 = env.CABFARE_D1 && typeof env.CABFARE_D1.prepare === 'function' ? env.CABFARE_D1 : null;
       if (d1) {
