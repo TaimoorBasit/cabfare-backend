@@ -29,7 +29,9 @@ const requireAdmin = async (c: any, next: any) => {
     const user = await getCurrentUser(resolveAdminAuthorization(c.req.header('Authorization'), c.req.header('X-Admin-Token')), env(c));
     if (!user) return c.json({ error: 'Authentication required' }, 401);
     c.set('adminUser', user);
-    await touchUserActivity(user.id, env(c));
+    c.executionCtx?.waitUntil
+      ? c.executionCtx.waitUntil(touchUserActivity(user.id, env(c)).catch(() => {}))
+      : touchUserActivity(user.id, env(c)).catch(() => {});
     await next();
 };
 
