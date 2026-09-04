@@ -237,7 +237,8 @@ class KVAdapter {
   async read(env: any): Promise<DatabaseSchema | null> {
     try {
       if (!env) throw new Error("Environment configuration is missing");
-      const fastKv = env.CABFARE_DB && typeof env.CABFARE_DB.get === 'function' ? env.CABFARE_DB : null;
+      const d1 = env.CABFARE_D1 && typeof env.CABFARE_D1.prepare === 'function' ? env.CABFARE_D1 : null;
+      const fastKv = !d1 && env.CABFARE_DB && typeof env.CABFARE_DB.get === 'function' ? env.CABFARE_DB : null;
       if (fastKv) {
         try {
           const storedData = await Promise.race([
@@ -249,7 +250,6 @@ class KVAdapter {
           console.warn('KV read unavailable; trying D1 fallback:', error);
         }
       }
-      const d1 = env.CABFARE_D1 && typeof env.CABFARE_D1.prepare === 'function' ? env.CABFARE_D1 : null;
       if (d1) {
         try {
           const row = await Promise.race([
