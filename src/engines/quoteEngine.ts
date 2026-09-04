@@ -122,7 +122,7 @@ export async function generateQuotes(journey: any, env: any) {
         vatPct: Number(data.globalVars?.vatPct ?? 20),
         vatAmount: pricingResult.finalFare * requiredVehicles * Number(data.globalVars?.vatPct ?? 20) / 100,
         customerTotal: pricingResult.finalFare * requiredVehicles * (1 + Number(data.globalVars?.vatPct ?? 20) / 100),
-        upperBoundPrice: (pricingResult.upperBoundFare || pricingResult.finalFare) * requiredVehicles,
+        upperBoundPrice: Math.max(pricingResult.finalFare, pricingResult.upperBoundFare || pricingResult.finalFare) * requiredVehicles,
         subtotal: (pricingResult.baseFare + pricingResult.extraLiveMileageCharge + pricingResult.extraDeadMileageCharge + pricingResult.waitingCharge) * requiredVehicles,
         surchargeLines: pricingResult.surchargeLines.map(s => ({...s, cost: s.cost * requiredVehicles})),
         surchargeTotal: pricingResult.surchargeTotal * requiredVehicles,
