@@ -138,6 +138,7 @@ export interface DatabaseSchema {
     holidayPayPct?: number;
     profitMarginPct?: number;
     netMarginPct?: number;
+    vatPct?: number;
     netProfitTarget?: number;
     extraLuggageProfitPct?: number;
     emptyLegThresholdKm?: number;

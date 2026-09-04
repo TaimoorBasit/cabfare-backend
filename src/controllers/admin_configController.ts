@@ -7,7 +7,7 @@ const numericGlobalFields = [
   'marginWeekday', 'marginWeekend', 'marginHoliday', 'overnightCost',
   'waitingChargePerHour', 'yardLat', 'yardLng', 'fuelPricePerLitre',
   'driverHourlyWage', 'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct',
-  'netMarginPct', 'netProfitTarget', 'dualDriverThresholdHours', 'waitingWageFactor',
+  'netMarginPct', 'vatPct', 'netProfitTarget', 'dualDriverThresholdHours', 'waitingWageFactor',
   'customerRangePct', 'walkaroundCheckMinutes'
 ];
 
@@ -15,7 +15,7 @@ const nonNegativeGlobalFields = [
   'driverWageWeekday', 'driverWageWeekend', 'driverWageHoliday',
   'marginWeekday', 'marginWeekend', 'marginHoliday', 'overnightCost',
   'waitingChargePerHour', 'fuelPricePerLitre', 'driverHourlyWage',
-  'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct', 'netMarginPct', 'netProfitTarget',
+  'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct', 'netMarginPct', 'vatPct', 'netProfitTarget',
   'dualDriverThresholdHours', 'waitingWageFactor', 'customerRangePct', 'walkaroundCheckMinutes'
 ];
 
@@ -65,6 +65,69 @@ function validateBlockedDates(blocks: any[], vehicleIds: Set<string>): string | 
     }
   }
   return null;
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  globalVars: 'Global Vars', operatorDetails: 'Operator Details', surcharges: 'Surcharges',
+  vehicles: 'Vehicles', annualOverheads: 'Annual Overheads', blockedDates: 'Blocked Dates'
+};
+const humanizeKey = (key: string) =>
+  String(key || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim().replace(/^./, c => c.toUpperCase()) || 'Field';
+const describeItem = (item: any) => item?.label || item?.name || (item?.id !== undefined ? `#${item.id}` : 'item');
+
+// Real field-level before/after for the activity log, computed from an
+// actual comparison instead of the previous placeholder that just listed
+// whatever top-level keys were present in the request with after: 'Updated'.
+// Object sections (globalVars, operatorDetails, surcharges) get per-field
+// diffs; list sections (vehicles, annualOverheads, blockedDates) get
+// per-item added/removed by id, plus per-field diffs for items edited in
+// place.
+function buildConfigChangeLog(before: any, after: any) {
+  const changes: { field: string; before?: any; after?: any }[] = [];
+  for (const key of Object.keys(SECTION_LABELS)) {
+    const b = before?.[key];
+    const a = after?.[key];
+    if (JSON.stringify(b) === JSON.stringify(a)) continue;
+    const label = SECTION_LABELS[key];
+    if (Array.isArray(a)) {
+      const bArr = Array.isArray(b) ? b : [];
+      const bById = new Map(bArr.map((item: any) => [String(item?.id), item]));
+      const aById = new Map(a.map((item: any) => [String(item?.id), item]));
+      for (const [id, item] of aById) {
+        if (!bById.has(id)) changes.push({ field: label, after: describeItem(item) });
+      }
+      for (const [id, item] of bById) {
+        if (!aById.has(id)) changes.push({ field: label, before: describeItem(item) });
+      }
+      for (const [id, item] of aById) {
+        const oldItem: any = bById.get(id);
+        if (!oldItem || JSON.stringify(oldItem) === JSON.stringify(item)) continue;
+        const itemLabel = `${label} — ${describeItem(item)}`;
+        for (const innerKey of Object.keys(item)) {
+          if (innerKey === 'id') continue;
+          const ib = oldItem?.[innerKey], ia = (item as any)[innerKey];
+          // A field that wasn't present before is normalization filling in a
+          // default (see the vehicle/globalVars healing above), not a real
+          // edit — skip it rather than reporting a fake "→ 0" for every field
+          // the record happened to be missing.
+          if (ib === undefined) continue;
+          if (typeof ib === 'object' || typeof ia === 'object') continue;
+          if (JSON.stringify(ib) === JSON.stringify(ia)) continue;
+          changes.push({ field: `${itemLabel} — ${humanizeKey(innerKey)}`, before: ib, after: ia });
+        }
+      }
+    } else if (a && typeof a === 'object') {
+      const innerKeys = new Set([...Object.keys(b || {}), ...Object.keys(a)]);
+      for (const innerKey of innerKeys) {
+        const ib = b?.[innerKey], ia = (a as any)[innerKey];
+        if (ib === undefined) continue;
+        if (typeof ib === 'object' || typeof ia === 'object') continue;
+        if (JSON.stringify(ib) === JSON.stringify(ia)) continue;
+        changes.push({ field: humanizeKey(innerKey), before: ib, after: ia });
+      }
+    }
+  }
+  return changes;
 }
 
 export const getHandler = async (req: Request, res: Response) => {
@@ -224,7 +287,7 @@ export const postHandler = async (req: Request, res: Response) => {
   if (badGlobalFields.length)  return res.status(400).json({ error: `Invalid numeric settings: ${badGlobalFields.join(', ')}` });
   const negativeGlobalFields = nonNegativeGlobalFields.filter(field => config.globalVars?.[field] !== undefined && Number(config.globalVars[field]) < 0);
   if (negativeGlobalFields.length)  return res.status(400).json({ error: `Settings cannot be negative: ${negativeGlobalFields.join(', ')}` });
-  const percentageMarginFields = ['marginWeekday', 'marginWeekend', 'marginHoliday', 'profitMarginPct', 'netMarginPct'];
+  const percentageMarginFields = ['marginWeekday', 'marginWeekend', 'marginHoliday', 'profitMarginPct', 'netMarginPct', 'vatPct'];
   const invalidPercentageMargin = percentageMarginFields.find(field => config.globalVars?.[field] !== undefined && Number(config.globalVars[field]) >= 100);
   if (invalidPercentageMargin) {
      return res.status(400).json({ error: `${invalidPercentageMargin} must be less than 100%` });
@@ -265,6 +328,17 @@ export const postHandler = async (req: Request, res: Response) => {
     }
   }
   if (db.data) {
+    // Snapshot the previous values before any mutation below, so the real
+    // before/after can be logged instead of a generic "this section changed"
+    // flag. Each section is about to be reassigned (not mutated in place),
+    // so a shallow reference here is enough — it won't be affected by the
+    // reassignments that follow.
+    const beforeConfig = {
+      globalVars: db.data.globalVars, operatorDetails: db.data.operatorDetails,
+      surcharges: db.data.surcharges, vehicles: db.data.vehicles,
+      annualOverheads: db.data.annualOverheads, blockedDates: db.data.blockedDates
+    };
+
     const savedBookings = await db.readBookings();
     if (savedBookings) db.data.bookings = savedBookings;
     if (config.vehicles) db.data.vehicles = config.vehicles;
@@ -300,8 +374,13 @@ export const postHandler = async (req: Request, res: Response) => {
         ...config.operatorDetails
       };
     }
+    const afterConfig = {
+      globalVars: db.data.globalVars, operatorDetails: db.data.operatorDetails,
+      surcharges: db.data.surcharges, vehicles: db.data.vehicles,
+      annualOverheads: db.data.annualOverheads, blockedDates: db.data.blockedDates
+    };
     addActivity(db, 'configuration', 'Updated admin configuration', req.adminUser,
-      Object.keys(config).map(field => ({ field, after: 'Updated' })));
+      buildConfigChangeLog(beforeConfig, afterConfig));
     await db.write();
   }
   return res.json({ success: true });
