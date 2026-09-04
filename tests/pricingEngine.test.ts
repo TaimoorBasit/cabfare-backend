@@ -312,6 +312,21 @@ test('pricing uses the Admin-configured ten-hour daily driving limit', () => {
   assert.equal(result.surchargeTotal, 0);
 });
 
+test('disabled Admin driver and customer-range rules are not applied', () => {
+  const data = makePricingData();
+  Object.assign(data.globalVars, {
+    dailyDrivingLimitEnabled: false,
+    drivingBreakTriggerEnabled: false,
+    drivingBreakDurationEnabled: false,
+    customerRangeUpliftEnabled: false
+  });
+  const result = calculatePriceFromData(makePricingInput({ totalDurationMinutes: 1800 }), data);
+
+  assert.equal(result.breakdown.driverCount, 1);
+  assert.equal(result.breakdown.mandatoryBreakHours, 0.75);
+  assert.equal(result.upperBoundFare, result.finalFare);
+});
+
 test('company overhead is covered by the minimum profitable fare', () => {
   const data = makePricingData();
   data.annualOverheads = [{ id: 1, label: 'Company overhead', cost: 36500 }];

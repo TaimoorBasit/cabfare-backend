@@ -59,10 +59,14 @@ export function makePricingData() {
       distanceUnit: 'km'
       ,emptyLegThresholdKm: 20
       ,dualDriverThresholdHours: 13
+      ,dailyDrivingLimitEnabled: true
       ,drivingBreakTriggerHours: 4.5
+      ,drivingBreakTriggerEnabled: true
       ,drivingBreakMinutes: 30
+      ,drivingBreakDurationEnabled: true
       ,waitingWageFactor: 0.75
       ,customerRangePct: 12
+      ,customerRangeUpliftEnabled: true
       ,walkaroundCheckMinutes: 0
     },
     surcharges: {

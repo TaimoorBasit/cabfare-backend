@@ -145,8 +145,12 @@ export interface DatabaseSchema {
   dualDriverThresholdHours?: number;
   drivingBreakTriggerHours?: number;
   drivingBreakMinutes?: number;
+    dailyDrivingLimitEnabled?: boolean;
+    drivingBreakTriggerEnabled?: boolean;
+    drivingBreakDurationEnabled?: boolean;
     waitingWageFactor?: number;
     customerRangePct?: number;
+    customerRangeUpliftEnabled?: boolean;
     pricingModelVersion?: string;
   };
   operatorDetails?: {

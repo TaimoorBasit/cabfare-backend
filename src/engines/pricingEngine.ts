@@ -255,12 +255,15 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   // A zero factor is valid when waiting time should not add wage cost.
   const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor]);
   const dailyDrivingHours = drivingHours / operatingDays;
-  const dailyDrivingLimit = configuredNumber('daily driving limit', [gv.dualDriverThresholdHours], { positive: true });
-  const driverCount = Math.max(1, Math.ceil(dailyDrivingHours / dailyDrivingLimit));
+  const dailyDrivingLimitEnabled = gv.dailyDrivingLimitEnabled !== false;
+  const dailyDrivingLimit = dailyDrivingLimitEnabled ? configuredNumber('daily driving limit', [gv.dualDriverThresholdHours], { positive: true }) : 0;
+  const driverCount = dailyDrivingLimitEnabled ? Math.max(1, Math.ceil(dailyDrivingHours / dailyDrivingLimit)) : 1;
   dualCrew = driverCount > 1;
-  const breakTriggerHours = configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours], { positive: true });
-  const breakDurationHours = configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes], { positive: true }) / 60;
-  const drivingBreakHours = Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / breakTriggerHours) * breakDurationHours * operatingDays;
+  const breakTriggerEnabled = gv.drivingBreakTriggerEnabled !== false;
+  const breakDurationEnabled = gv.drivingBreakDurationEnabled !== false;
+  const breakTriggerHours = breakTriggerEnabled ? configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours], { positive: true }) : 0;
+  const breakDurationHours = breakDurationEnabled ? configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes], { positive: true }) / 60 : 0;
+  const drivingBreakHours = breakTriggerEnabled && breakDurationEnabled ? Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / breakTriggerHours) * breakDurationHours * operatingDays : 0;
   const workingHours = drivingHours + waitingHours;
   const dailyWorkingHours = workingHours / operatingDays;
   const workingTimeBreakHours = (dailyWorkingHours > 9 ? 0.75 : dailyWorkingHours > 6 ? 0.5 : 0) * operatingDays;
@@ -484,8 +487,9 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   finalFare = Math.max(finalFare, profitFloor);
 
     const roundedFinalFare = Math.ceil(finalFare / 5) * 5;
-    const customerRangePct = configuredNumber('customer price range percentage', [gv.customerRangePct ?? 12]);
-    const upperBoundFare = roundToNearestFive(finalFare * (1 + customerRangePct / 100));
+    const customerRangeEnabled = gv.customerRangeUpliftEnabled !== false;
+    const customerRangePct = customerRangeEnabled ? configuredNumber('customer price range percentage', [gv.customerRangePct ?? 12]) : 0;
+    const upperBoundFare = customerRangeEnabled ? roundToNearestFive(finalFare * (1 + customerRangePct / 100)) : roundedFinalFare;
 
     return {
       baseFare: Math.round(baseFare),

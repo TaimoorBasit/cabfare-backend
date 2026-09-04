@@ -18,6 +18,7 @@ const nonNegativeGlobalFields = [
   'holidayPayPct', 'profitMarginPct', 'extraLuggageProfitPct', 'netMarginPct', 'vatPct', 'netProfitTarget',
   'dualDriverThresholdHours', 'drivingBreakTriggerHours', 'drivingBreakMinutes', 'waitingWageFactor', 'customerRangePct', 'walkaroundCheckMinutes'
 ];
+const booleanGlobalFields = ['dailyDrivingLimitEnabled', 'drivingBreakTriggerEnabled', 'drivingBreakDurationEnabled', 'customerRangeUpliftEnabled'];
 
 const positiveVehicleFields = ['capacity', 'fleetCount', 'utilisationDays', 'fuelKpl', 'expectedTyreLifeKm'];
 const nonNegativeVehicleFields = [
@@ -222,6 +223,11 @@ export const postHandler = async (req: Request, res: Response) => {
         } else {
           (config.globalVars as any)[field] = val;
         }
+      }
+    }
+    for (const field of booleanGlobalFields) {
+      if ((config.globalVars as any)[field] !== undefined) {
+        (config.globalVars as any)[field] = Boolean((config.globalVars as any)[field]);
       }
     }
     if (config.globalVars.distanceUnit !== undefined && !['km', 'miles'].includes(config.globalVars.distanceUnit)) {
