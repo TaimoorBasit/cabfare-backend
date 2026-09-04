@@ -395,10 +395,17 @@ export class DB {
 
   async readBookings(): Promise<any[] | null> {
     if (this.env?.CABFARE_D1 && typeof this.env.CABFARE_D1.prepare === 'function') {
-      const row = await this.env.CABFARE_D1.prepare('SELECT state FROM database_state WHERE id = 1').first();
-      if (row?.state) {
-        const state = JSON.parse(String(row.state));
-        return Array.isArray(state?.bookings) ? state.bookings : null;
+      try {
+        const row = await Promise.race([
+          this.env.CABFARE_D1.prepare('SELECT state FROM database_state WHERE id = 1').first(),
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 bookings read timed out')), 5000))
+        ]);
+        if (row?.state) {
+          const state = JSON.parse(String(row.state));
+          return Array.isArray(state?.bookings) ? state.bookings : null;
+        }
+      } catch (error) {
+        console.warn('D1 bookings read unavailable; trying KV fallback:', error);
       }
     }
     if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.get === 'function') {
