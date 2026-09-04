@@ -266,7 +266,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   // Missing restored configuration must not block customer quotes or invent a
   // hidden break charge; enable this calculation only when explicitly enabled.
   const breakTriggerEnabled = gv.drivingBreakTriggerEnabled === true;
-  const breakDurationEnabled = gv.drivingBreakDurationEnabled !== false;
+  const breakDurationEnabled = gv.drivingBreakDurationEnabled === true;
   const breakTriggerHours = breakTriggerEnabled ? configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours], { positive: true }) : 0;
   const breakDurationHours = breakDurationEnabled ? configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes], { positive: true }) / 60 : 0;
   const drivingBreakHours = breakTriggerEnabled && breakDurationEnabled ? Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / breakTriggerHours) * breakDurationHours * operatingDays : 0;
