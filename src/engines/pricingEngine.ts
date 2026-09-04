@@ -212,6 +212,10 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   let appliedDriverRate = 0;
   let waitingHours = 0;
   let mandatoryBreakHours = 0;
+  let commercialMinimumHire = 0;
+  let commercialSellingRate = 0;
+  let commercialIncludedKm = 0;
+  let commercialMileageCharge = 0;
 
   const gv = { ...(data.globalVars || {}), ...(vehicle.pricingSettings || {}) };
   const totalKm = liveKm + deadKm;
@@ -368,6 +372,10 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       // Fleet economics is authoritative; a previously stored manual value must
       // not survive an overhead, fleet-count, or utilisation change.
       const minimumHire = Number(liveMinHire) > 0 ? Number(liveMinHire) : 0;
+      commercialMinimumHire = minimumHire;
+      commercialSellingRate = sellingRate;
+      commercialIncludedKm = includedKm;
+      commercialMileageCharge = Math.max(0, totalKm - includedKm) * sellingRate;
       baseFare = vehicle.fareCalculationMethod === 'cost-plus'
         ? 0
         : minimumHire + Math.max(0, totalKm - includedKm) * sellingRate;
@@ -507,6 +515,12 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       isManualQuote,
       pricingMethod: template ? 'fixed-route' : isManualQuote ? 'cost-model' : 'pricing-matrix',
       breakdown: {
+        fareCalculationMethod: vehicle.fareCalculationMethod === 'cost-plus' ? 'cost-plus' : 'commercial',
+        minimumHire: Math.round(commercialMinimumHire * 100) / 100,
+        sellingRate: Math.round(commercialSellingRate * 100) / 100,
+        includedMileage: Math.round(commercialIncludedKm * 100) / 100,
+        commercialMileageCharge: Math.round(commercialMileageCharge * 100) / 100,
+        commercialFareBeforeProfitFloor: Math.round((preSurchargeBase + surchargeTotal) * 100) / 100,
         distanceCost: Math.round(distanceCost * 100) / 100,
         atomicMileageCost: Math.round(atomicMileageCost * 100) / 100,
         liveDistanceCost: Math.round((totalKm > 0 ? distanceCost * liveKm / totalKm : 0) * 100) / 100,
