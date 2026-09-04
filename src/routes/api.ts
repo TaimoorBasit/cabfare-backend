@@ -38,6 +38,11 @@ const requirePermission = (permission: string) => async (c: any, next: any) => {
     if (!user || !can(user, permission)) return c.json({ error: 'You do not have permission to use this area' }, 403);
     await next();
 };
+const requireAnyPermission = (...permissions: string[]) => async (c: any, next: any) => {
+    const user = c.get('adminUser');
+    if (!user || !permissions.some(permission => can(user, permission))) return c.json({ error: 'You do not have permission to use this area' }, 403);
+    await next();
+};
 
 api.use('/admin/*', requireAdmin);
 api.use('/bookings', async (c: any, next: any) => {
@@ -101,7 +106,7 @@ api.post('/auth/logout', async c => {
 
 
 api.get('/admin/config', bindHandler(adminConfig, 'getHandler'));
-api.post('/admin/config', requirePermission('settings'), bindHandler(adminConfig, 'postHandler'));
+api.post('/admin/config', requireAnyPermission('settings', 'pricing'), bindHandler(adminConfig, 'postHandler'));
 api.get('/admin/dashboard', requirePermission('dashboard'), bindHandler(adminDashboard, 'getHandler'));
 api.get('/admin/staff', requirePermission('staff'), bindHandler(adminStaff, 'getHandler'));
 api.post('/admin/staff/invite', requirePermission('staff'), bindHandler(adminStaff, 'inviteHandler'));
