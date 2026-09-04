@@ -227,7 +227,8 @@ export const postHandler = async (req: Request, res: Response) => {
     }
     for (const field of booleanGlobalFields) {
       if ((config.globalVars as any)[field] !== undefined) {
-        (config.globalVars as any)[field] = Boolean((config.globalVars as any)[field]);
+        const value = (config.globalVars as any)[field];
+        (config.globalVars as any)[field] = value === true || value === 'true';
       }
     }
     if (config.globalVars.distanceUnit !== undefined && !['km', 'miles'].includes(config.globalVars.distanceUnit)) {
