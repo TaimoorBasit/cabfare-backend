@@ -263,7 +263,9 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   const dailyDrivingLimit = dailyDrivingLimitEnabled ? configuredNumber('daily driving limit', [gv.dualDriverThresholdHours], { positive: true }) : 0;
   const driverCount = dailyDrivingLimitEnabled ? Math.max(1, Math.ceil(dailyDrivingHours / dailyDrivingLimit)) : 1;
   dualCrew = driverCount > 1;
-  const breakTriggerEnabled = gv.drivingBreakTriggerEnabled !== false;
+  // Missing restored configuration must not block customer quotes or invent a
+  // hidden break charge; enable this calculation only when explicitly enabled.
+  const breakTriggerEnabled = gv.drivingBreakTriggerEnabled === true;
   const breakDurationEnabled = gv.drivingBreakDurationEnabled !== false;
   const breakTriggerHours = breakTriggerEnabled ? configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours], { positive: true }) : 0;
   const breakDurationHours = breakDurationEnabled ? configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes], { positive: true }) / 60 : 0;
