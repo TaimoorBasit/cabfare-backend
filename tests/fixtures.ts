@@ -53,6 +53,8 @@ export function makePricingData() {
       marginWeekday: 20,
       marginWeekend: 25,
       marginHoliday: 30,
+      netMarginPct: 5,
+      netProfitTarget: 0,
       overnightCost: 80,
       waitingChargePerHour: 50,
       extraLuggageProfitPct: 5,

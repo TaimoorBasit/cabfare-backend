@@ -41,6 +41,10 @@ function configuredNumber(label: string, values: unknown[], options: { positive?
   return value;
 }
 
+function roundToNearestFive(value: number) {
+  return Math.round(value / 5) * 5;
+}
+
 // Mirrors the lifecycle calculation shown in Admin. Missing Admin values must
 // fail clearly instead of silently introducing a Backend-only cost.
 function perKmCostFromAdmin(direct: unknown, setCost: unknown, expectedLifeKm: unknown, label: string) {
@@ -94,10 +98,6 @@ function calculateOperatingDays(departureDate: string, returnDate?: string) {
   const departureDay = Date.UTC(departureYear, departureMonth - 1, departureDateOfMonth);
   const returnDay = Date.UTC(returnYear, returnMonth - 1, returnDateOfMonth);
   return Math.max(1, Math.round((returnDay - departureDay) / 86400000) + 1);
-}
-
-function roundToNearestFive(value: number) {
-  return Math.round(value / 5) * 5;
 }
 
 function getAnnualFixedCost(vehicle: any) {
@@ -239,7 +239,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
   // Driver must walk around the vehicle for a safety check before leaving the
   // yard and after returning, on top of the routed driving time.
-  const walkaroundHours = (Number(gv.walkaroundCheckMinutes ?? 30) * 2) / 60;
+  const walkaroundHours = (configuredNumber('walkaround check minutes', [gv.walkaroundCheckMinutes]) * 2) / 60;
   const drivingHours = (input.totalDurationMinutes / 60) + walkaroundHours;
   const operatingDays = calculateOperatingDays(departureDate, returnDate);
   const requestedWaitingHours = (Number(waitingMins) || 0) / 60;
@@ -266,8 +266,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   const drivingBreakHours = breakTriggerEnabled && breakDurationEnabled ? Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / breakTriggerHours) * breakDurationHours * operatingDays : 0;
   const workingHours = drivingHours + waitingHours;
   const dailyWorkingHours = workingHours / operatingDays;
-  const workingTimeBreakHours = (dailyWorkingHours > 9 ? 0.75 : dailyWorkingHours > 6 ? 0.5 : 0) * operatingDays;
-  mandatoryBreakHours = Math.max(drivingBreakHours, workingTimeBreakHours);
+  mandatoryBreakHours = drivingBreakHours;
   driverCost = ((drivingHours + mandatoryBreakHours) * driverWage + waitingHours * driverWage * waitingFactor) * driverCount;
 
   if (template) {
@@ -480,15 +479,15 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   const allocatedOverhead = (Number(vehicleEconomics?.dailyOverhead) || 0) * operatingDays;
   if (!isManualQuote) standingCost = Math.round(allocatedStanding * 100) / 100;
   const totalOperatingCost = atomicMileageCost + driverCost + standingCost + overnightCost + (isManualQuote ? allocatedStanding : 0) + allocatedOverhead + surchargeTotal;
-  const netMarginPct = Math.max(5, configuredNumber('net margin percentage', [gv.netMarginPct ?? 5]));
+  const netMarginPct = configuredNumber('net margin percentage', [gv.netMarginPct]);
   if (netMarginPct >= 100) throw new PricingConfigurationError('net margin percentage must be less than 100');
-  const netProfitTarget = configuredNumber('minimum net profit', [gv.netProfitTarget ?? 0]);
+  const netProfitTarget = configuredNumber('minimum net profit', [gv.netProfitTarget]);
   const profitFloor = Math.max(totalOperatingCost / (1 - netMarginPct / 100), totalOperatingCost + netProfitTarget);
   finalFare = Math.max(finalFare, profitFloor);
 
     const roundedFinalFare = Math.ceil(finalFare / 5) * 5;
     const customerRangeEnabled = gv.customerRangeUpliftEnabled !== false;
-    const customerRangePct = customerRangeEnabled ? configuredNumber('customer price range percentage', [gv.customerRangePct ?? 12]) : 0;
+    const customerRangePct = customerRangeEnabled ? configuredNumber('customer price range percentage', [gv.customerRangePct]) : 0;
     const upperBoundFare = customerRangeEnabled ? roundToNearestFive(finalFare * (1 + customerRangePct / 100)) : roundedFinalFare;
 
     return {

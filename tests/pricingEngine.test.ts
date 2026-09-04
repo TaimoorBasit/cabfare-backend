@@ -323,7 +323,7 @@ test('disabled Admin driver and customer-range rules are not applied', () => {
   const result = calculatePriceFromData(makePricingInput({ totalDurationMinutes: 1800 }), data);
 
   assert.equal(result.breakdown.driverCount, 1);
-  assert.equal(result.breakdown.mandatoryBreakHours, 0.75);
+  assert.equal(result.breakdown.mandatoryBreakHours, 0);
   assert.equal(result.upperBoundFare, result.finalFare);
 });
 
