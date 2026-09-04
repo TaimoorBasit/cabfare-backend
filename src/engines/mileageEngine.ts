@@ -1,5 +1,7 @@
 import { getDatabase } from '../database/db';
 
+const mapsRequestTimeoutMs = 8000;
+
 export class MileageUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -15,7 +17,7 @@ export async function getDirections(origin: any, destination: any, waypoints: an
       ? '&waypoints=' + stops.map(w => formatLoc(w)).join('|')
       : '';
     const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${formatLoc(from)}&destination=${formatLoc(to)}${waypointsStr}&region=uk&key=${apiKey}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(mapsRequestTimeoutMs) });
     if (!res.ok) throw new Error(`Google Maps API error: ${res.statusText}`);
     return await res.json() as any;
   };
@@ -43,7 +45,7 @@ function formatLoc(loc: any) {
 async function geocodeLocation(loc: any, apiKey: string) {
   if (typeof loc !== 'string') return loc;
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(loc.trim())}&components=country:GB&region=uk&key=${apiKey}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(mapsRequestTimeoutMs) });
   if (!res.ok) throw new Error(`Google Maps geocoding error: ${res.statusText}`);
   const data: any = await res.json();
   const point = data.results?.[0]?.geometry?.location;
@@ -122,12 +124,13 @@ export async function calculateMileage(journey: any, env: any) {
   const mileagePromise = (async () => {
     try {
       
-    const liveDirections = await getDirections(liveOrigin, liveDestination, liveWaypoints, apiKey);
+    const [liveDirections, deadOutDirections] = await Promise.all([
+      getDirections(liveOrigin, liveDestination, liveWaypoints, apiKey),
+      getDirections(yardLoc, liveOrigin, [], apiKey)
+    ]);
     let liveDistanceMeters = sumLegs(liveDirections.routes[0].legs, 'distance');
     let liveDurationSeconds = sumLegs(liveDirections.routes[0].legs, 'duration');
     const divisor = 1000;
-
-    const deadOutDirections = await getDirections(yardLoc, liveOrigin, [], apiKey);
     const rawDeadOutDistanceMeters = sumLegs(deadOutDirections.routes[0].legs, 'distance');
     const rawDeadOutDurationSeconds = sumLegs(deadOutDirections.routes[0].legs, 'duration');
     const includeDeadOut = rawDeadOutDistanceMeters / 1000 >= emptyLegThresholdKm;
@@ -137,8 +140,15 @@ export async function calculateMileage(journey: any, env: any) {
       ? Math.max(0, (new Date(journey.returnDate).getTime() - (departure.getTime() + (deadOutDurationSeconds + liveDurationSeconds) * 1000)) / 60000)
       : 0;
 
-    if (isReturn) {
-      const returnDirections = await getDirections(liveDestination, liveOrigin, [...liveWaypoints].reverse(), apiKey);
+    const returnDirectionsPromise = isReturn
+      ? getDirections(liveDestination, liveOrigin, [...liveWaypoints].reverse(), apiKey)
+      : Promise.resolve(null);
+    const deadBackOrigin = isReturn ? liveOrigin : liveDestination;
+    const [returnDirections, deadBackDirections] = await Promise.all([
+      returnDirectionsPromise,
+      getDirections(deadBackOrigin, yardLoc, [], apiKey)
+    ]);
+    if (returnDirections) {
       liveDistanceMeters += sumLegs(returnDirections.routes[0].legs, 'distance');
       liveDurationSeconds += sumLegs(returnDirections.routes[0].legs, 'duration');
     }
@@ -147,8 +157,6 @@ export async function calculateMileage(journey: any, env: any) {
     let deadBackDistanceMeters = 0;
     let deadBackDurationSeconds = 0;
     {
-      const deadBackOrigin = isReturn ? liveOrigin : liveDestination;
-      const deadBackDirections = await getDirections(deadBackOrigin, yardLoc, [], apiKey);
       const rawDeadBackDistanceMeters = sumLegs(deadBackDirections.routes[0].legs, 'distance');
       if (rawDeadBackDistanceMeters / 1000 >= emptyLegThresholdKm) {
         deadBackDistanceMeters = rawDeadBackDistanceMeters;
