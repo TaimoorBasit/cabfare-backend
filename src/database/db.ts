@@ -239,8 +239,15 @@ class KVAdapter {
       if (!env) throw new Error("Environment configuration is missing");
       const d1 = env.CABFARE_D1 && typeof env.CABFARE_D1.prepare === 'function' ? env.CABFARE_D1 : null;
       if (d1) {
-        const row = await d1.prepare('SELECT state FROM database_state WHERE id = 1').first();
-        if (row?.state) return JSON.parse(String(row.state)) as DatabaseSchema;
+        try {
+          const row = await Promise.race([
+            d1.prepare('SELECT state FROM database_state WHERE id = 1').first(),
+            new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 read timed out')), 5000))
+          ]);
+          if (row?.state) return JSON.parse(String(row.state)) as DatabaseSchema;
+        } catch (error) {
+          console.warn('D1 read unavailable; trying KV fallback:', error);
+        }
       }
       const cloudflareKv = env.CABFARE_DB && typeof env.CABFARE_DB.get === 'function'
         ? env.CABFARE_DB
