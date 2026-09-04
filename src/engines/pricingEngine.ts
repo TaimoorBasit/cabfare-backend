@@ -368,7 +368,9 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       // Fleet economics is authoritative; a previously stored manual value must
       // not survive an overhead, fleet-count, or utilisation change.
       const minimumHire = Number(liveMinHire) > 0 ? Number(liveMinHire) : 0;
-      baseFare = minimumHire + Math.max(0, totalKm - includedKm) * sellingRate;
+      baseFare = vehicle.fareCalculationMethod === 'cost-plus'
+        ? 0
+        : minimumHire + Math.max(0, totalKm - includedKm) * sellingRate;
       preSurchargeBase = baseFare + waitingCharge;
     }
   }

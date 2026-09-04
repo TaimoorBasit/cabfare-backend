@@ -105,6 +105,7 @@ export interface DatabaseSchema {
     includedKmReturn?: number;
     standingCostPerDay?: number;
     commercialWeight?: number;
+    fareCalculationMethod?: 'commercial' | 'cost-plus';
     
     fleetCount?: number;
     utilisationDays?: number;

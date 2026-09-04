@@ -250,6 +250,16 @@ test('weekend driver cost cannot reduce the calibrated customer fare', () => {
   assert.equal(result.finalFare, 125);
 });
 
+test('cost-plus vehicle pricing uses the profit floor instead of selling rate', () => {
+  const data = makePricingData();
+  data.vehicles[0].fareCalculationMethod = 'cost-plus';
+  const result = calculatePriceFromData(makePricingInput(), data);
+
+  assert.equal(result.baseFare, 0);
+  assert.equal(result.pricingMethod, 'cost-model');
+  assert.equal(result.finalFare, Math.ceil(result.breakdown.profitFloor / 5) * 5);
+});
+
 test('holiday driver cost cannot reduce the calibrated customer fare', () => {
   const data = makePricingData();
   data.seasonalPricing.push({
