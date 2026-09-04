@@ -59,6 +59,8 @@ export function makePricingData() {
       distanceUnit: 'km'
       ,emptyLegThresholdKm: 20
       ,dualDriverThresholdHours: 13
+      ,drivingBreakTriggerHours: 4.5
+      ,drivingBreakMinutes: 30
       ,waitingWageFactor: 0.75
       ,customerRangePct: 12
       ,walkaroundCheckMinutes: 0

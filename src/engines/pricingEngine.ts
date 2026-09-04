@@ -41,16 +41,15 @@ function configuredNumber(label: string, values: unknown[], options: { positive?
   return value;
 }
 
-// Mirrors the lifecycle fallback already computed in Admin/components/AdminApp.tsx
-// (direct per-km value wins when set; otherwise setCost / expectedLifeKm; otherwise a safe default),
-// so admin edits to either input actually reach the price instead of being silently ignored.
-function perKmCostWithLifecycleFallback(direct: unknown, setCost: unknown, expectedLifeKm: unknown, fallbackDefault: number) {
+// Mirrors the lifecycle calculation shown in Admin. Missing Admin values must
+// fail clearly instead of silently introducing a Backend-only cost.
+function perKmCostFromAdmin(direct: unknown, setCost: unknown, expectedLifeKm: unknown, label: string) {
   const directValue = Number(direct);
   if (directValue > 0) return directValue;
   const set = Number(setCost);
   const life = Number(expectedLifeKm);
   if (set > 0 && life > 0) return set / life;
-  return fallbackDefault;
+  throw new PricingConfigurationError(`${label} is missing or invalid`);
 }
 
 function haversineKm(a: {lat: number, lng: number}, b: {lat: number, lng: number}) {
@@ -220,17 +219,13 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   // a vehicle hasn't been fully configured (1.52/L, 5 km/L), so an
   // incomplete vehicle degrades to an approximate running cost instead of
   // refusing to price the trip at all.
-  const fuelPrice = configuredNumber('fuel price per litre', [
-    Number(vehicle.fuelPricePerLitre) > 0 ? vehicle.fuelPricePerLitre : null,
-    gv.fuelPricePerLitre,
-    1.52
-  ]);
-  const fuelKpl = configuredNumber('vehicle fuel economy', [vehicle.fuelKpl, 5], { positive: true });
-  const maintenanceCostPerKm = perKmCostWithLifecycleFallback(
-    vehicle.maintenanceCostPerKm, vehicle.maintenanceSetCost, vehicle.expectedMaintenanceLifeKm, 0.15
+  const fuelPrice = configuredNumber('fuel price per litre', [vehicle.fuelPricePerLitre, gv.fuelPricePerLitre]);
+  const fuelKpl = configuredNumber('vehicle fuel economy', [vehicle.fuelKpl], { positive: true });
+  const maintenanceCostPerKm = perKmCostFromAdmin(
+    vehicle.maintenanceCostPerKm, vehicle.maintenanceSetCost, vehicle.expectedMaintenanceLifeKm, 'maintenance cost per km'
   );
-  const tyreCostPerKm = perKmCostWithLifecycleFallback(
-    vehicle.tyreCostPerKm, vehicle.tyreSetCost, vehicle.expectedTyreLifeKm, 0.05
+  const tyreCostPerKm = perKmCostFromAdmin(
+    vehicle.tyreCostPerKm, vehicle.tyreSetCost, vehicle.expectedTyreLifeKm, 'tyre cost per km'
   );
   const physicalOperatingRate = (fuelPrice / fuelKpl) + maintenanceCostPerKm + tyreCostPerKm;
   // vehicle.ratePerKm is only needed in the rare case none of the above
@@ -258,12 +253,14 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   const driverWage = configuredNumber('driver hourly wage', [configuredDriverWage, gv.driverHourlyWage], { positive: true });
   appliedDriverRate = driverWage;
   // A zero factor is valid when waiting time should not add wage cost.
-  const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor ?? 0.75]);
+  const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor]);
   const dailyDrivingHours = drivingHours / operatingDays;
-  const dailyDrivingLimit = Math.min(9, configuredNumber('daily driving limit', [gv.dualDriverThresholdHours ?? 9], { positive: true }));
+  const dailyDrivingLimit = configuredNumber('daily driving limit', [gv.dualDriverThresholdHours], { positive: true });
   const driverCount = Math.max(1, Math.ceil(dailyDrivingHours / dailyDrivingLimit));
   dualCrew = driverCount > 1;
-  const drivingBreakHours = Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / 4.5) * 0.75 * operatingDays;
+  const breakTriggerHours = configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours], { positive: true });
+  const breakDurationHours = configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes], { positive: true }) / 60;
+  const drivingBreakHours = Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / breakTriggerHours) * breakDurationHours * operatingDays;
   const workingHours = drivingHours + waitingHours;
   const dailyWorkingHours = workingHours / operatingDays;
   const workingTimeBreakHours = (dailyWorkingHours > 9 ? 0.75 : dailyWorkingHours > 6 ? 0.5 : 0) * operatingDays;
@@ -300,7 +297,9 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
     if (matrix) {
       baseFare = configuredNumber('pricing matrix base fare', [matrix.baseFare]);
-      const totalDistance = Number(liveKm) + Number(deadKm);
+      const matrixDistanceFactor = distanceUnit === 'miles' ? 1 / 1.60934 : 1;
+      const matrixRateFactor = distanceUnit === 'miles' ? 1 / 1.60934 : 1;
+      const totalDistance = (Number(liveKm) + Number(deadKm)) * matrixDistanceFactor;
       if (!Array.isArray(matrix.distanceBands) || matrix.distanceBands.length === 0) {
         throw new PricingConfigurationError(`pricing matrix rule ${matrix.id || ''} requires stored distance bands`);
       }
@@ -311,9 +310,9 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       if (!configuredBand) {
         throw new PricingConfigurationError(`pricing matrix rule ${matrix.id || ''} has no band for ${totalDistance} ${distanceUnit}`);
       }
-      const mileageRate = configuredNumber('pricing matrix distance-band rate', [configuredBand.rate]);
-      const includedLiveMileage = configuredNumber('included live mileage', [matrix.includedLiveMileage]);
-      const includedDeadMileage = configuredNumber('included dead mileage', [matrix.includedDeadMileage]);
+      const mileageRate = configuredNumber('pricing matrix distance-band rate', [configuredBand.rate]) * matrixRateFactor;
+      const includedLiveMileage = configuredNumber('included live mileage', [matrix.includedLiveMileage]) / matrixDistanceFactor;
+      const includedDeadMileage = configuredNumber('included dead mileage', [matrix.includedDeadMileage]) / matrixDistanceFactor;
       const waitingRate = configuredNumber('pricing matrix waiting charge', [matrix.waitingChargePerHour]);
       const weekendMultiplier = configuredNumber('pricing matrix weekend multiplier', [matrix.weekendRateMultiplier], { positive: true });
       const nightMultiplier = configuredNumber('pricing matrix night multiplier', [matrix.nightRateMultiplier], { positive: true });
@@ -345,12 +344,15 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       // refusing the quote when unset — the profit floor below still catches
       // underpricing, so a config gap here should reduce quote quality, not
       // block the customer from getting a price at all.
-      waitingCharge = waitingHours * configuredNumber('waiting charge per hour', [gv.waitingChargePerHour, 0]);
-      const rawSellingRate = Number(journeyType === 'return' ? vehicle.sellingRateReturn : vehicle.sellingRateOneWay);
-      const sellingRate = Number.isFinite(rawSellingRate) && rawSellingRate > 0 ? rawSellingRate : 0;
+      waitingCharge = waitingHours * configuredNumber('waiting charge per hour', [gv.waitingChargePerHour]);
+      const sellingRate = configuredNumber(
+        `${journeyType} selling rate`,
+        [journeyType === 'return' ? vehicle.sellingRateReturn : vehicle.sellingRateOneWay],
+        { positive: true }
+      );
       const includedKm = configuredNumber(
         `${journeyType} included mileage`,
-        [journeyType === 'return' ? vehicle.includedKmReturn : vehicle.includedKmOneWay, 0]
+        [journeyType === 'return' ? vehicle.includedKmReturn : vehicle.includedKmOneWay]
       );
       // vehicle.minimumHire is normally kept in sync by the admin config save
       // (see admin_configController.ts) and falls back to computing it live

@@ -232,7 +232,7 @@ test('cost-model pricing separates the customer fare from operating cost', () =>
   assert.equal(result.upperBoundFare, 140);
   assert.equal(result.breakdown.distanceCost, 54);
   assert.equal(result.breakdown.atomicMileageCost, 54);
-  assert.equal(result.breakdown.totalOperatingCost, 64);
+  assert.equal(result.breakdown.totalOperatingCost, 87.33);
   assert.equal(
     result.breakdown.totalOperatingCost,
     result.breakdown.fuelCost + result.breakdown.maintenanceCost + result.breakdown.tyreCost + result.breakdown.driverCost + result.breakdown.allocatedStanding + result.breakdown.allocatedOverhead
@@ -298,17 +298,17 @@ test('multi-day pricing follows the supplied zero standing and overnight policy'
   assert.equal(result.dualCrew, false);
 });
 
-test('pricing assigns enough drivers for the nine-hour daily driving limit', () => {
+test('pricing uses the Admin-configured ten-hour daily driving limit', () => {
   const result = calculatePriceFromData(makePricingInput({
     totalDurationMinutes: 1800,
     departureDate: '2026-08-03T12:00:00',
     returnDate: '2026-08-05T12:00:00'
   }), makePricingData());
 
-  assert.equal(result.dualCrew, true);
-  assert.equal(result.driverCost, 1035);
-  assert.equal(result.breakdown.driverCount, 2);
-  assert.equal(result.breakdown.mandatoryBreakHours, 4.5);
+  assert.equal(result.dualCrew, false);
+  assert.equal(result.driverCost, 495);
+  assert.equal(result.breakdown.driverCount, 1);
+  assert.equal(result.breakdown.mandatoryBreakHours, 3);
   assert.equal(result.surchargeTotal, 0);
 });
 
@@ -337,7 +337,7 @@ test('customer waiting is charged separately and never replaces mandatory breaks
 
   assert.equal(result.waitingCharge, 100);
   assert.equal(result.breakdown.waitingHours, 2);
-  assert.equal(result.breakdown.mandatoryBreakHours, 0.75);
+  assert.equal(result.breakdown.mandatoryBreakHours, 0.5);
 });
 
 test('driver cost includes the pre- and post-trip vehicle walkaround check', () => {
@@ -380,7 +380,7 @@ test('company booking calibration covers short return, airport one-way and long 
     liveDurationMinutes: 282, totalDurationMinutes: 282,
     returnDate: '2026-08-03T20:00:00.000Z'
   }), data);
-  assert.deepEqual([shortReturn.finalFare, airportOneWay.finalFare, longReturn.finalFare], [105, 470, 445]);
+  assert.deepEqual([shortReturn.finalFare, airportOneWay.finalFare, longReturn.finalFare], [105, 470, 440]);
   for (const result of [shortReturn, airportOneWay, longReturn]) {
     assert.ok(result.finalFare >= result.breakdown.profitFloor);
   }
@@ -437,29 +437,9 @@ test('quote still succeeds when minimum hire cannot be determined at all, protec
   assert.ok(result.finalFare >= result.breakdown.profitFloor);
 });
 
-test('manual quote still succeeds when selling rate, waiting charge and included mileage are all unset, protected by the profit floor', () => {
-  const data = makePricingData();
-  delete data.vehicles[0].sellingRateOneWay;
-  delete data.vehicles[0].includedKmOneWay;
-  delete data.globalVars.waitingChargePerHour;
-  const result = calculatePriceFromData(makePricingInput(), data);
-  assert.ok(result.finalFare > 0);
-  assert.ok(result.finalFare >= result.breakdown.profitFloor);
-});
-
 test('missing vehicle operating rate still prices the trip from fuel/maintenance/tyre costs', () => {
   const data = makePricingData();
   delete data.vehicles[0].ratePerKm;
-  const result = calculatePriceFromData(makePricingInput(), data);
-  assert.ok(result.finalFare > 0);
-});
-
-test('quote still succeeds even when fuel price, fuel economy and vehicle rate are all unset', () => {
-  const data = makePricingData();
-  delete data.vehicles[0].ratePerKm;
-  delete data.vehicles[0].fuelPricePerLitre;
-  delete data.vehicles[0].fuelKpl;
-  delete data.globalVars.fuelPricePerLitre;
   const result = calculatePriceFromData(makePricingInput(), data);
   assert.ok(result.finalFare > 0);
 });

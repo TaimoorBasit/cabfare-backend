@@ -142,7 +142,9 @@ export interface DatabaseSchema {
     netProfitTarget?: number;
     extraLuggageProfitPct?: number;
     emptyLegThresholdKm?: number;
-    dualDriverThresholdHours?: number;
+  dualDriverThresholdHours?: number;
+  drivingBreakTriggerHours?: number;
+  drivingBreakMinutes?: number;
     waitingWageFactor?: number;
     customerRangePct?: number;
     pricingModelVersion?: string;
