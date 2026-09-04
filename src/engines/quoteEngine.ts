@@ -64,7 +64,7 @@ export async function generateQuotes(journey: any, env: any) {
     }, env)
   })))).filter(item => item.available);
 
-  for (const { vehicle } of availableVehicles) {
+  const generatedQuotes = await Promise.all(availableVehicles.map(async ({ vehicle }) => {
 
     const mileageResult = await calculateMileage({
       ...journey,
@@ -105,7 +105,7 @@ export async function generateQuotes(journey: any, env: any) {
 
     
 
-    quotes.push({
+    return {
       vehicle: usableCapacity === vehicle.capacity ? vehicle : { ...vehicle, capacity: usableCapacity },
       result: {
         distanceUnit: data.globalVars?.distanceUnit,
@@ -138,8 +138,8 @@ export async function generateQuotes(journey: any, env: any) {
         ,pricingMethod: pricingResult.pricingMethod
         ,breakdown: pricingResult.breakdown
       }
-    });
-  }
+    };
+  }));
 
-  return quotes;
+  return generatedQuotes;
 }
