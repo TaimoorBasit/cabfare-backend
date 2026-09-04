@@ -337,9 +337,8 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
       isManualQuote = true;
 
-      // The supplied policy sets quote standing and accommodation to zero for
-      // every defined journey class; their configured rates remain reporting inputs.
-      standingCost = 0;
+      // Vehicle standing is allocated below from annual fixed costs, fleet
+      // count, utilisation days, and operating days.
       overnightCost = 0;
       // These, like minimum hire above, degrade to a safe default instead of
       // refusing the quote when unset — the profit floor below still catches
@@ -473,7 +472,8 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   const vehicleEconomics = fleetEconomics(data).vehicleBreakdown.find((item: any) => item.id === vehicleId);
   const allocatedStanding = (Number(vehicleEconomics?.dailyStanding) || 0) * operatingDays;
   const allocatedOverhead = (Number(vehicleEconomics?.dailyOverhead) || 0) * operatingDays;
-  const accountingCost = distanceCost + driverCost + standingCost + overnightCost + allocatedStanding + allocatedOverhead + surchargeTotal;
+  if (!isManualQuote) standingCost = Math.round(allocatedStanding * 100) / 100;
+  const accountingCost = distanceCost + driverCost + standingCost + overnightCost + (isManualQuote ? allocatedStanding : 0) + allocatedOverhead + surchargeTotal;
   const netMarginPct = Math.max(5, configuredNumber('net margin percentage', [gv.netMarginPct ?? 5]));
   if (netMarginPct >= 100) throw new PricingConfigurationError('net margin percentage must be less than 100');
   const netProfitTarget = configuredNumber('minimum net profit', [gv.netProfitTarget ?? 0]);
