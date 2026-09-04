@@ -367,7 +367,13 @@ export class DB {
   }
 
   async readBookings(): Promise<any[] | null> {
-    if (this.env?.CABFARE_D1 && this.data?.bookings) return this.data.bookings;
+    if (this.env?.CABFARE_D1 && typeof this.env.CABFARE_D1.prepare === 'function') {
+      const row = await this.env.CABFARE_D1.prepare('SELECT state FROM database_state WHERE id = 1').first();
+      if (row?.state) {
+        const state = JSON.parse(String(row.state));
+        return Array.isArray(state?.bookings) ? state.bookings : null;
+      }
+    }
     if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.get === 'function') {
       const value = await this.env.CABFARE_DB.get('cabfare_bookings', 'json');
       return Array.isArray(value) ? value : null;
