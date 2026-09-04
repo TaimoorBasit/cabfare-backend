@@ -449,7 +449,7 @@ export async function initDatabase(env: any): Promise<DB> {
       applySupervisorPricingMigration(db.data);
       await db.write();
     } else if (applySupervisorPricingMigration(db.data) || normalizeAccessData(db.data) || normalizeVehicleCostAliases(db.data)) {
-      await db.write();
+      void db.write().catch(() => {});
     }
 
     return db;
@@ -472,7 +472,7 @@ export async function getDatabase(env: any): Promise<DB> {
     
     if (Date.now() - db.lastFetchTime > DATABASE_REFRESH_INTERVAL_MS) {
       await db.read();
-      if (db.data && normalizeVehicleCostAliases(db.data)) await db.write();
+      if (db.data && normalizeVehicleCostAliases(db.data)) void db.write().catch(() => {});
     }
   }
   return db!;
