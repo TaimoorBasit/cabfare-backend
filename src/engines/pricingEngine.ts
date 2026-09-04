@@ -263,13 +263,11 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   const dailyDrivingLimit = dailyDrivingLimitEnabled ? configuredNumber('daily driving limit', [gv.dualDriverThresholdHours], { positive: true }) : 0;
   const driverCount = dailyDrivingLimitEnabled ? Math.max(1, Math.ceil(dailyDrivingHours / dailyDrivingLimit)) : 1;
   dualCrew = driverCount > 1;
-  // Missing restored configuration must not block customer quotes or invent a
-  // hidden break charge; enable this calculation only when explicitly enabled.
-  const breakTriggerEnabled = gv.drivingBreakTriggerEnabled === true;
-  const breakDurationEnabled = gv.drivingBreakDurationEnabled === true;
-  const breakTriggerHours = breakTriggerEnabled ? configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours], { positive: true }) : 0;
-  const breakDurationHours = breakDurationEnabled ? configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes], { positive: true }) / 60 : 0;
-  const drivingBreakHours = breakTriggerEnabled && breakDurationEnabled ? Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / breakTriggerHours) * breakDurationHours * operatingDays : 0;
+  // These are the two visible Admin pricing controls; do not depend on
+  // Backend-only enable flags that the Admin UI cannot edit.
+  const breakTriggerHours = configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours, 4.5], { positive: true });
+  const breakDurationHours = configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes, 30], { positive: true }) / 60;
+  const drivingBreakHours = Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / breakTriggerHours) * breakDurationHours * operatingDays;
   const workingHours = drivingHours + waitingHours;
   const dailyWorkingHours = workingHours / operatingDays;
   mandatoryBreakHours = drivingBreakHours;
