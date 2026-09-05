@@ -52,7 +52,10 @@ export async function generateQuotes(journey: any, env: any) {
 
   const quotes = [];
 
-  const availableVehicles = (await Promise.all((data.vehicles as any[]).map(async vehicle => ({
+  const requestedVehicles = journey.vehiclePreference
+    ? (data.vehicles as any[]).filter(vehicle => vehicle.id === journey.vehiclePreference)
+    : data.vehicles as any[];
+  const availableVehicles = (await Promise.all(requestedVehicles.map(async vehicle => ({
     vehicle,
     available: await checkAvailability({
       vehicleId: vehicle.id,
