@@ -169,9 +169,16 @@ export async function calculateMileage(journey: any, env: any) {
   const mileagePromise = (async () => {
     try {
       
-    const [liveDirections, deadOutDirections] = await Promise.all([
+    const returnDirectionsPromise = isReturn
+      ? getDirections(liveDestination, liveOrigin, [...liveWaypoints].reverse(), apiKey)
+      : Promise.resolve(null);
+    const deadBackOrigin = isReturn ? liveOrigin : liveDestination;
+
+    const [liveDirections, deadOutDirections, returnDirections, deadBackDirections] = await Promise.all([
       getDirections(liveOrigin, liveDestination, liveWaypoints, apiKey),
-      getDirections(yardLoc, liveOrigin, [], apiKey)
+      getDirections(yardLoc, liveOrigin, [], apiKey),
+      returnDirectionsPromise,
+      getDirections(deadBackOrigin, yardLoc, [], apiKey)
     ]);
     let liveDistanceMeters = sumLegs(liveDirections.routes[0].legs, 'distance');
     let liveDurationSeconds = sumLegs(liveDirections.routes[0].legs, 'duration');
@@ -185,14 +192,6 @@ export async function calculateMileage(journey: any, env: any) {
       ? Math.max(0, (new Date(journey.returnDate).getTime() - (departure.getTime() + (deadOutDurationSeconds + liveDurationSeconds) * 1000)) / 60000)
       : 0;
 
-    const returnDirectionsPromise = isReturn
-      ? getDirections(liveDestination, liveOrigin, [...liveWaypoints].reverse(), apiKey)
-      : Promise.resolve(null);
-    const deadBackOrigin = isReturn ? liveOrigin : liveDestination;
-    const [returnDirections, deadBackDirections] = await Promise.all([
-      returnDirectionsPromise,
-      getDirections(deadBackOrigin, yardLoc, [], apiKey)
-    ]);
     if (returnDirections) {
       liveDistanceMeters += sumLegs(returnDirections.routes[0].legs, 'distance');
       liveDurationSeconds += sumLegs(returnDirections.routes[0].legs, 'duration');
