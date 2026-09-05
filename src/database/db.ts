@@ -378,7 +378,15 @@ export class DB {
   }
 
   async read() {
-    await this.writeQueue;
+    try {
+      await Promise.race([
+        this.writeQueue,
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error('writeQueue timeout')), 10000))
+      ]);
+    } catch (e) {
+      console.warn('Queue wait warning:', e);
+      this.writeQueue = Promise.resolve();
+    }
     this.data = await this.adapter.read(this.env);
     this.lastFetchTime = Date.now();
   }
@@ -386,6 +394,13 @@ export class DB {
   async write() {
     if (!this.data) return;
     const snapshot = structuredClone(this.data);
+    const latest = await this.adapter.read(this.env).catch(() => null);
+    if (latest) {
+      // Configuration writes must never replace bookings or quotes created by
+      // a concurrent request with an older in-memory snapshot.
+      snapshot.bookings = structuredClone(latest.bookings || snapshot.bookings || []);
+      snapshot.quotes = structuredClone(latest.quotes || snapshot.quotes || []);
+    }
     const writeEnvironment = this.env;
     const operation = this.writeQueue.then(() => this.adapter.write(snapshot, writeEnvironment));
     this.writeQueue = operation.catch(() => undefined);
@@ -402,26 +417,39 @@ export class DB {
         ]);
         if (row?.state) {
           const state = JSON.parse(String(row.state));
-          return Array.isArray(state?.bookings) ? state.bookings : null;
+          if (Array.isArray(state?.bookings)) return state.bookings;
         }
       } catch (error) {
         console.warn('D1 bookings read unavailable; trying KV fallback:', error);
       }
     }
     if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.get === 'function') {
-      const value = await this.env.CABFARE_DB.get('cabfare_bookings', 'json');
-      return Array.isArray(value) ? value : null;
+      try {
+        const value = await this.env.CABFARE_DB.get('cabfare_bookings', 'json');
+        if (Array.isArray(value)) return value;
+      } catch (error) {
+        console.warn('KV bookings read unavailable:', error);
+      }
     }
-    return null;
+    return Array.isArray(this.data?.bookings) ? this.data.bookings : null;
   }
 
   async writeBookings(bookings: any[]) {
-    if (this.env?.CABFARE_D1) {
-      await this.write();
-      return;
-    }
+    const latest = await this.adapter.read(this.env).catch(() => null);
+    const snapshot = structuredClone(latest || this.data);
+    if (!snapshot) return;
+    snapshot.bookings = structuredClone(bookings || []);
+    const operation = this.writeQueue.then(() => this.adapter.write(snapshot, this.env));
+    this.writeQueue = operation.catch(() => undefined);
+    await operation;
+    this.data = snapshot;
+    this.lastFetchTime = Date.now();
     if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.put === 'function') {
-      await this.env.CABFARE_DB.put('cabfare_bookings', JSON.stringify(bookings || []));
+      try {
+        await this.env.CABFARE_DB.put('cabfare_bookings', JSON.stringify(bookings || []));
+      } catch (e) {
+        console.error('KV writeBookings error:', e);
+      }
     }
   }
 }
@@ -475,7 +503,7 @@ export async function initDatabase(env: any): Promise<DB> {
       applySupervisorPricingMigration(db.data);
       await db.write();
     } else if (applySupervisorPricingMigration(db.data) || normalizeAccessData(db.data) || normalizeVehicleCostAliases(db.data)) {
-      void db.write().catch(() => {});
+      await db.write().catch(() => {});
     }
 
     return db;
@@ -498,7 +526,9 @@ export async function getDatabase(env: any): Promise<DB> {
     
     if (Date.now() - db.lastFetchTime > DATABASE_REFRESH_INTERVAL_MS) {
       await db.read();
-      if (db.data && normalizeVehicleCostAliases(db.data)) void db.write().catch(() => {});
+      if (db.data && normalizeVehicleCostAliases(db.data)) {
+        await db.write().catch(() => {});
+      }
     }
   }
   return db!;
