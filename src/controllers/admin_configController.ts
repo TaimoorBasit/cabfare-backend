@@ -1,5 +1,5 @@
 ﻿type Request = any; type Response = any; type NextFunction = any;
-import { addActivity, getDatabase } from '../database/db';
+import { addActivity, DB, getDatabase } from '../database/db';
 import { fleetEconomics } from '../engines/pricingEngine';
 
 const numericGlobalFields = [
@@ -144,6 +144,15 @@ export const getHandler = async (req: Request, res: Response) => {
 }
 
 export const postHandler = async (req: Request, res: Response) => {
+  if (req.body?.vehicleFareMethod && req.env?.CABFARE_D1 && typeof req.env.CABFARE_D1.prepare === 'function') {
+    const id = String(req.body.vehicleFareMethod.id || '');
+    const method = req.body.vehicleFareMethod.fareCalculationMethod;
+    if (!['commercial', 'cost-plus'].includes(method)) return res.status(400).json({ error: 'Fare calculation method must be commercial or cost-plus' });
+    const db = new DB(req.env);
+    const updated = await db.updateVehicleFareMethod(id, method);
+    if (!updated) return res.status(404).json({ error: 'Vehicle not found' });
+    return res.json({ success: true, vehicle: { id, fareCalculationMethod: method } });
+  }
   const db = await getDatabase(req.env);
   if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
   await db.read();

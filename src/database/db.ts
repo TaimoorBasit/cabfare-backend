@@ -441,6 +441,15 @@ export class DB {
     return Array.isArray(this.data?.users) ? this.data.users : null;
   }
 
+  async updateVehicleFareMethod(id: string, method: 'commercial' | 'cost-plus'): Promise<boolean> {
+    const d1 = this.env?.CABFARE_D1;
+    if (!d1 || typeof d1.prepare !== 'function') return false;
+    const row = await d1.prepare("SELECT json_each.key AS vehicle_index FROM database_state, json_each(json_extract(state, '$.vehicles')) WHERE database_state.id = 1 AND json_extract(json_each.value, '$.id') = ?").bind(id).first();
+    if (!row) return false;
+    await d1.prepare("UPDATE database_state SET state = json_set(state, '$.vehicles[' || ? || '].fareCalculationMethod', ?), updated_at = ? WHERE id = 1").bind(String(row.vehicle_index), method, new Date().toISOString()).run();
+    return true;
+  }
+
   async writeBookings(bookings: any[]) {
     const latest = await this.adapter.read(this.env).catch(() => null);
     const snapshot = structuredClone(latest || this.data);
