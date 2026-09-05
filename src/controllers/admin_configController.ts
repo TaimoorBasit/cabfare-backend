@@ -361,8 +361,6 @@ export const postHandler = async (req: Request, res: Response) => {
       annualOverheads: db.data.annualOverheads, blockedDates: db.data.blockedDates
     };
 
-    const savedBookings = await db.readBookings();
-    if (savedBookings) db.data.bookings = savedBookings;
     if (config.vehicles) db.data.vehicles = config.vehicles;
     if (config.globalVars) {
       db.data.globalVars = {
