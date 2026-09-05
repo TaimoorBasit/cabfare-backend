@@ -517,7 +517,7 @@ export class DB {
         ]);
         if (splitRow?.data) {
           const parsed = JSON.parse(String(splitRow.data));
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
       } catch (splitError) {
         console.warn('D1 app_sections bookings read unavailable; trying fallback:', splitError);
@@ -529,7 +529,11 @@ export class DB {
         ]);
         if (row?.state) {
           const state = JSON.parse(String(row.state));
-          if (Array.isArray(state?.bookings)) return state.bookings;
+          if (Array.isArray(state?.bookings) && state.bookings.length > 0) {
+            this.env.CABFARE_D1.prepare("INSERT INTO app_sections (section_key, data, updated_at) VALUES ('bookings', ?, datetime('now')) ON CONFLICT(section_key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at")
+              .bind(JSON.stringify(state.bookings)).run().catch(() => {});
+            return state.bookings;
+          }
         }
       } catch (error) {
         console.warn('D1 bookings read unavailable; trying KV fallback:', error);
@@ -614,7 +618,18 @@ export class DB {
     this.data.bookings = structuredClone(bookings || []);
     const sectionsToSave = { bookings: structuredClone(bookings || []) };
     const writeEnvironment = this.env;
-    const operation = this.writeQueue.then(() => this.adapter.writeSections(sectionsToSave, writeEnvironment));
+    const operation = this.writeQueue.then(async () => {
+      await this.adapter.writeSections(sectionsToSave, writeEnvironment);
+      if (writeEnvironment?.CABFARE_D1 && typeof writeEnvironment.CABFARE_D1.prepare === 'function') {
+        try {
+          await writeEnvironment.CABFARE_D1.prepare(
+            "UPDATE database_state SET state = json_set(state, '$.bookings', json(?)), updated_at = ? WHERE id = 1"
+          ).bind(JSON.stringify(bookings || []), new Date().toISOString()).run();
+        } catch (backupError) {
+          console.warn('Failed to update database_state backup for bookings:', backupError);
+        }
+      }
+    });
     this.writeQueue = operation.catch(() => undefined);
     await operation;
     this.lastFetchTime = Date.now();
