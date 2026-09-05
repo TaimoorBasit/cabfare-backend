@@ -425,6 +425,21 @@ export class DB {
     return Array.isArray(this.data?.bookings) ? this.data.bookings : null;
   }
 
+  async readUsers(): Promise<User[] | null> {
+    if (this.env?.CABFARE_D1 && typeof this.env.CABFARE_D1.prepare === 'function') {
+      const row = await Promise.race([
+        this.env.CABFARE_D1.prepare("SELECT json_extract(state, '$.users') AS users FROM database_state WHERE id = 1").first(),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 users read timed out')), 5000))
+      ]);
+      if (row?.users) {
+        const users = typeof row.users === 'string' ? JSON.parse(row.users) : row.users;
+        return Array.isArray(users) ? users as User[] : [];
+      }
+      return [];
+    }
+    return Array.isArray(this.data?.users) ? this.data.users : null;
+  }
+
   async writeBookings(bookings: any[]) {
     const latest = await this.adapter.read(this.env).catch(() => null);
     const snapshot = structuredClone(latest || this.data);

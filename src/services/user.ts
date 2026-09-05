@@ -46,17 +46,18 @@ export async function createUser(email: string, password: string, name: string, 
 
 export async function findUserByEmail(email: string, env: any): Promise<User | null> {
   const db = await getDatabase(env);
-  if (!db.data) return null;
+  const users = await db.readUsers();
+  if (!users) return null;
   const normalizedEmail = String(email).trim().toLowerCase();
-  return db.data.users.find(
+  return users.find(
     (u: User) => String(u.email).trim().toLowerCase() === normalizedEmail
   ) || null;
 }
 
 export async function findUserById(id: string, env: any): Promise<User | null> {
   const db = await getDatabase(env);
-  if (!db.data) return null;
-  return db.data.users.find((u: User) => u.id === id) || null;
+  const users = await db.readUsers();
+  return users?.find((u: User) => u.id === id) || null;
 }
 
 export async function authenticateUser(email: string, password: string, env: any): Promise<User | null> {
