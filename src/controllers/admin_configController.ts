@@ -146,6 +146,7 @@ export const getHandler = async (req: Request, res: Response) => {
 export const postHandler = async (req: Request, res: Response) => {
   const db = await getDatabase(req.env);
   if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
+  await db.read();
   const config = req.body;
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
      return res.status(400).json({ error: 'Configuration payload must be an object' });
