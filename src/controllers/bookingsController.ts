@@ -51,9 +51,6 @@ export const getHandler = async (req: Request, res: Response) => {
   try {
     const db = await getDatabase(req.env);
     if (!db.data) throw new Error("Database not initialized");
-    let savedBookings: any[] | null = null;
-    try { savedBookings = await db.readBookings(); } catch (indexError) { console.error('Booking index read failed:', indexError); }
-    if (savedBookings) db.data.bookings = savedBookings;
     return res.json({ bookings: db.data.bookings || [] });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
