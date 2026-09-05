@@ -63,6 +63,7 @@ export const getHandler = async (req: Request, res: Response) => {
 export const postHandler = async (req: Request, res: Response) => {
   try {
     const db = await getDatabase(req.env);
+    await db.read();
     if (!db.data) throw new Error("Database not initialized");
 
     const payload = req.body;
