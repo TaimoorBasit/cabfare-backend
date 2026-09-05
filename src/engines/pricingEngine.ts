@@ -53,7 +53,9 @@ function perKmCostFromAdmin(direct: unknown, setCost: unknown, expectedLifeKm: u
 }
 
 function haversineKm(a: {lat: number, lng: number}, b: {lat: number, lng: number}) {
-  if (!a || !b || !a.lat || !b.lat) return 9999;
+  if (!a || !b || !Number.isFinite(a.lat) || !Number.isFinite(a.lng) || !Number.isFinite(b.lat) || !Number.isFinite(b.lng)) {
+    throw new PricingConfigurationError('location coordinates are missing or invalid');
+  }
   const R = 6371; 
   const dLa = (b.lat - a.lat) * Math.PI / 180;
   const dLo = (b.lng - a.lng) * Math.PI / 180;
@@ -263,8 +265,8 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   // existing disabled policy without requiring a hidden flag to price quotes.
   const breakTriggerEnabled = gv.drivingBreakTriggerEnabled !== false;
   const breakDurationEnabled = gv.drivingBreakDurationEnabled !== false;
-  const breakTriggerHours = breakTriggerEnabled ? configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours, 4.5], { positive: true }) : 0;
-  const breakDurationHours = breakDurationEnabled ? configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes, 30], { positive: true }) / 60 : 0;
+  const breakTriggerHours = breakTriggerEnabled ? configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours], { positive: true }) : 0;
+  const breakDurationHours = breakDurationEnabled ? configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes], { positive: true }) / 60 : 0;
   const drivingBreakHours = breakTriggerEnabled && breakDurationEnabled ? Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / breakTriggerHours) * breakDurationHours * operatingDays : 0;
   const workingHours = drivingHours + waitingHours;
   const dailyWorkingHours = workingHours / operatingDays;
