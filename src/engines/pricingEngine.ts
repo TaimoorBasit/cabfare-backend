@@ -263,8 +263,8 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   dualCrew = driverCount > 1;
   // These values mirror the two visible Admin pricing controls. Preserve any
   // existing disabled policy without requiring a hidden flag to price quotes.
-  const breakTriggerEnabled = gv.drivingBreakTriggerEnabled !== false;
-  const breakDurationEnabled = gv.drivingBreakDurationEnabled !== false;
+  const breakTriggerEnabled = gv.drivingBreakTriggerEnabled === true;
+  const breakDurationEnabled = gv.drivingBreakDurationEnabled === true;
   const breakTriggerHours = breakTriggerEnabled ? configuredNumber('driving break trigger hours', [gv.drivingBreakTriggerHours], { positive: true }) : 0;
   const breakDurationHours = breakDurationEnabled ? configuredNumber('driving break duration minutes', [gv.drivingBreakMinutes], { positive: true }) / 60 : 0;
   const drivingBreakHours = breakTriggerEnabled && breakDurationEnabled ? Math.floor(Math.max(0, dailyDrivingHours - Number.EPSILON) / breakTriggerHours) * breakDurationHours * operatingDays : 0;
