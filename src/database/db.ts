@@ -251,15 +251,12 @@ class KVAdapter {
         }
       }
       if (d1) {
-        try {
-          const row = await Promise.race([
-            d1.prepare('SELECT state FROM database_state WHERE id = 1').first(),
-            new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 read timed out')), 5000))
-          ]);
-          if (row?.state) return JSON.parse(String(row.state)) as DatabaseSchema;
-        } catch (error) {
-          console.warn('D1 read unavailable; trying KV fallback:', error);
-        }
+        const row = await Promise.race([
+          d1.prepare('SELECT state FROM database_state WHERE id = 1').first(),
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 read timed out')), 5000))
+        ]);
+        if (row?.state) return JSON.parse(String(row.state)) as DatabaseSchema;
+        return null;
       }
       const cloudflareKv = env.CABFARE_DB && typeof env.CABFARE_DB.get === 'function'
         ? env.CABFARE_DB
@@ -423,7 +420,7 @@ export class DB {
         console.warn('D1 bookings read unavailable; trying KV fallback:', error);
       }
     }
-    if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.get === 'function') {
+    if (!this.env?.CABFARE_D1 && this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.get === 'function') {
       try {
         const value = await this.env.CABFARE_DB.get('cabfare_bookings', 'json');
         if (Array.isArray(value)) return value;
@@ -444,7 +441,7 @@ export class DB {
     await operation;
     this.data = snapshot;
     this.lastFetchTime = Date.now();
-    if (this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.put === 'function') {
+    if (!this.env?.CABFARE_D1 && this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.put === 'function') {
       try {
         await this.env.CABFARE_DB.put('cabfare_bookings', JSON.stringify(bookings || []));
       } catch (e) {

@@ -12,7 +12,6 @@ import * as authRegister from '../controllers/auth_registerController';
 import * as authAccess from '../controllers/auth_accessController';
 import * as adminStaff from '../controllers/admin_staffController';
 import * as bookings from '../controllers/bookingsController';
-import * as dbTest from '../controllers/db-testController';
 import * as hello from '../controllers/helloController';
 import * as quotesCalculate from '../controllers/quotes_calculateController';
 import { fleetEconomics } from '../engines/pricingEngine';
