@@ -151,6 +151,21 @@ export const postHandler = async (req: Request, res: Response) => {
      return res.status(400).json({ error: 'Configuration payload must be an object' });
   }
 
+  if (config.vehicleFareMethod) {
+    const id = String(config.vehicleFareMethod.id || '');
+    const fareCalculationMethod = config.vehicleFareMethod.fareCalculationMethod;
+    if (!['commercial', 'cost-plus'].includes(fareCalculationMethod)) {
+      return res.status(400).json({ error: 'Fare calculation method must be commercial or cost-plus' });
+    }
+    await db.read();
+    const vehicle = db.data?.vehicles?.find((item: any) => item.id === id);
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+    vehicle.fareCalculationMethod = fareCalculationMethod;
+    addActivity(db, 'configuration', `Updated ${vehicle.name} fare calculation method`, req.adminUser);
+    await db.write();
+    return res.json({ success: true, vehicle: { id, fareCalculationMethod } });
+  }
+
   // 1. Heal vehicles
   if (config.vehicles && Array.isArray(config.vehicles)) {
     config.vehicles = config.vehicles.map((v: any) => {
