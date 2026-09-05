@@ -73,7 +73,7 @@ export const postHandler = async (req: Request, res: Response) => {
   const season = normalizedSeason(item);
   db.data.seasonalPricing.push(season);
   addActivity(db, 'pricing', `Created seasonal rule ${season.id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ seasonalPricing: db.data.seasonalPricing, activityLog: db.data.activityLog });
   return res.status(201).json(season);
 };
 
@@ -89,7 +89,7 @@ export const putHandler = async (req: Request, res: Response) => {
   const season = normalizedSeason(item);
   db.data.seasonalPricing[index] = season;
   addActivity(db, 'pricing', `Updated seasonal rule ${season.id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ seasonalPricing: db.data.seasonalPricing, activityLog: db.data.activityLog });
   return res.json(season);
 };
 
@@ -102,6 +102,6 @@ export const deleteHandler = async (req: Request, res: Response) => {
   db.data.seasonalPricing = db.data.seasonalPricing.filter(rule => rule.id !== id);
   if (db.data.seasonalPricing.length === before) return res.status(404).json({ error: 'Seasonal rule not found' });
   addActivity(db, 'pricing', `Deleted seasonal rule ${id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ seasonalPricing: db.data.seasonalPricing, activityLog: db.data.activityLog });
   return res.json({ success: true });
 };

@@ -46,6 +46,6 @@ export async function consumeAccessToken(token: string, password: string, kind: 
   delete user[hashField];
   delete user[expiryField];
   addActivity(db, 'access', `${user.name} ${kind === 'invite' ? 'accepted an invitation' : 'reset their password'}`, user);
-  await db.write();
+  await db.writeSections({ users: db.data.users, activityLog: db.data.activityLog });
   return user;
 }

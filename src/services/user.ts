@@ -39,7 +39,7 @@ export async function createUser(email: string, password: string, name: string, 
   };
 
   db.data.users.push(newUser);
-  await db.write();
+  await db.writeSections({ users: db.data.users });
 
   return newUser;
 }
@@ -106,7 +106,7 @@ export async function recordLogin(user: User, env: any) {
   stored.sessionStartedAt = now;
   stored.sessionLastSeenAt = now;
   recordDailyUsage(stored, new Date(now), 0, true);
-  await db.write();
+  await db.writeSections({ users: db.data.users });
 }
 
 export async function recordSessionHeartbeat(userId: string, env: any, stop = false) {
@@ -116,7 +116,7 @@ export async function recordSessionHeartbeat(userId: string, env: any, stop = fa
   const now = Date.now();
   if (!stop && now - (lastActivityWrite.get(userId) || 0) < ACTIVITY_WRITE_INTERVAL_MS) return;
   recordSessionTime(user, new Date(), stop);
-  await db.write();
+  await db.writeSections({ users: db.data.users });
   lastActivityWrite.set(userId, now);
 }
 
@@ -134,6 +134,6 @@ export async function touchUserActivity(userId: string, env: any) {
   const addedMinutes = Math.min(5, elapsedMinutes);
   user.lastActiveAt = new Date(now).toISOString();
   recordDailyUsage(user, new Date(now), addedMinutes);
-  await db.write();
+  await db.writeSections({ users: db.data.users });
   lastActivityWrite.set(userId, now);
 }

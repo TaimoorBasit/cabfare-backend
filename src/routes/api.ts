@@ -56,7 +56,10 @@ const createShim = (handler: any) => {
     return async (c: any) => {
         let body = {};
         if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
-            body = await c.req.json().catch(() => ({}));
+            const contentType = c.req.header('content-type') || '';
+            if (contentType.includes('application/json')) {
+                body = await c.req.json().catch(() => ({}));
+            }
         }
         const req = {
             body,

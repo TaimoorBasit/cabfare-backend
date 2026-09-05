@@ -46,8 +46,8 @@ export function checkAvailabilityFromData(input: AvailabilityInput, data: any) {
   ];
   const hasInvalidRelevantBlock = availabilityBlocks.some((block: any) => {
     if (block.vehicleId !== vehicle.id) return false;
-    const blockStart = new Date(block.from);
-    const blockEnd = new Date(block.to);
+    const blockStart = new Date(block.from || block.startDate);
+    const blockEnd = new Date(block.to || block.endDate);
     const units = Number(block.units);
     return Number.isNaN(blockStart.getTime()) || Number.isNaN(blockEnd.getTime()) ||
       blockEnd < blockStart || !Number.isInteger(units) || units < 1;
@@ -55,8 +55,8 @@ export function checkAvailabilityFromData(input: AvailabilityInput, data: any) {
   if (hasInvalidRelevantBlock) return false;
   const overlappingBlocks = availabilityBlocks.filter(block => {
     if (block.vehicleId !== vehicle.id) return false;
-    const blockStart = new Date(block.from);
-    const blockEnd = new Date(block.to);
+    const blockStart = new Date(block.from || block.startDate);
+    const blockEnd = new Date(block.to || block.endDate);
 
     return depDate <= blockEnd && retDate >= blockStart;
   });

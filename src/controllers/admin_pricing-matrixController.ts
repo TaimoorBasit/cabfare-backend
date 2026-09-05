@@ -81,7 +81,7 @@ export const postHandler = async (req: Request, res: Response) => {
   const rule = normalizedRule(item);
   db.data.pricingMatrix.push(rule);
   addActivity(db, 'pricing', `Created pricing matrix rule ${rule.id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ pricingMatrix: db.data.pricingMatrix, activityLog: db.data.activityLog });
   return res.status(201).json(rule);
 };
 
@@ -97,7 +97,7 @@ export const putHandler = async (req: Request, res: Response) => {
   const rule = normalizedRule(item);
   db.data.pricingMatrix[index] = rule;
   addActivity(db, 'pricing', `Updated pricing matrix rule ${rule.id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ pricingMatrix: db.data.pricingMatrix, activityLog: db.data.activityLog });
   return res.json(rule);
 };
 
@@ -110,6 +110,6 @@ export const deleteHandler = async (req: Request, res: Response) => {
   db.data.pricingMatrix = db.data.pricingMatrix.filter(rule => rule.id !== id);
   if (db.data.pricingMatrix.length === before) return res.status(404).json({ error: 'Pricing matrix rule not found' });
   addActivity(db, 'pricing', `Deleted pricing matrix rule ${id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ pricingMatrix: db.data.pricingMatrix, activityLog: db.data.activityLog });
   return res.json({ success: true });
 };

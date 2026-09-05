@@ -9,29 +9,74 @@ export class MileageUnavailableError extends Error {
   }
 }
 
+const directionsCache = new Map<string, { data: any; expiresAt: number }>();
+const directionsInFlight = new Map<string, Promise<any>>();
+const DIRECTIONS_CACHE_TTL_MS = 15 * 60 * 1000;
+
+export function clearDirectionsCache() {
+  directionsCache.clear();
+  directionsInFlight.clear();
+}
+
 export async function getDirections(origin: any, destination: any, waypoints: any[] = [], apiKey: string) {
   if (!apiKey) throw new Error("Google Maps API key is required");
 
-  const request = async (from: any, to: any, stops: any[]) => {
-    const waypointsStr = stops.length > 0
-      ? '&waypoints=' + stops.map(w => formatLoc(w)).join('|')
-      : '';
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${formatLoc(from)}&destination=${formatLoc(to)}${waypointsStr}&region=uk&key=${apiKey}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(mapsRequestTimeoutMs) });
-    if (!res.ok) throw new Error(`Google Maps API error: ${res.statusText}`);
-    return await res.json() as any;
-  };
+  const useCache = apiKey !== 'test-key' && process.env.NODE_ENV !== 'test';
+  const cacheKey = `${JSON.stringify(origin)}|${JSON.stringify(destination)}|${JSON.stringify(waypoints)}`;
+  const now = Date.now();
 
-  let data = await request(origin, destination, waypoints);
-  if (data.status === 'NOT_FOUND' || data.status === 'ZERO_RESULTS') {
-    const resolved = await Promise.all([origin, ...waypoints, destination].map(loc => geocodeLocation(loc, apiKey)));
-    data = await request(resolved[0], resolved[resolved.length - 1], resolved.slice(1, -1));
-  }
-  if (data.status !== 'OK') {
-    throw new Error(`Google Maps API failed: ${data.status} - ${data.error_message || ''}`);
+  if (useCache) {
+    const cached = directionsCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+    const inFlight = directionsInFlight.get(cacheKey);
+    if (inFlight) {
+      return await inFlight;
+    }
   }
 
-  return data;
+  const directionsPromise = (async () => {
+    const request = async (from: any, to: any, stops: any[]) => {
+      const waypointsStr = stops.length > 0
+        ? '&waypoints=' + stops.map(w => formatLoc(w)).join('|')
+        : '';
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${formatLoc(from)}&destination=${formatLoc(to)}${waypointsStr}&region=uk&key=${apiKey}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(mapsRequestTimeoutMs) });
+      if (!res.ok) throw new Error(`Google Maps API error: ${res.statusText}`);
+      return await res.json() as any;
+    };
+
+    let data = await request(origin, destination, waypoints);
+    if (data.status === 'NOT_FOUND' || data.status === 'ZERO_RESULTS') {
+      const resolved = await Promise.all([origin, ...waypoints, destination].map(loc => geocodeLocation(loc, apiKey)));
+      data = await request(resolved[0], resolved[resolved.length - 1], resolved.slice(1, -1));
+    }
+    if (data.status !== 'OK') {
+      throw new Error(`Google Maps API failed: ${data.status} - ${data.error_message || ''}`);
+    }
+
+    if (useCache) {
+      directionsCache.set(cacheKey, { data, expiresAt: Date.now() + DIRECTIONS_CACHE_TTL_MS });
+      if (directionsCache.size > 200) {
+        const oldest = directionsCache.keys().next().value;
+        if (oldest) directionsCache.delete(oldest);
+      }
+    }
+    return data;
+  })();
+
+  if (useCache) {
+    directionsInFlight.set(cacheKey, directionsPromise);
+  }
+
+  try {
+    return await directionsPromise;
+  } finally {
+    if (useCache) {
+      directionsInFlight.delete(cacheKey);
+    }
+  }
 }
 
 function formatLoc(loc: any) {

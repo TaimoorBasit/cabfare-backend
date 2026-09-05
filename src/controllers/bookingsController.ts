@@ -76,9 +76,8 @@ export const postHandler = async (req: Request, res: Response) => {
     const validationError = validateBookingPayload(payload);
     if (validationError) return res.status(400).json({ error: validationError });
 
-    if (!Array.isArray(db.data.bookings)) {
-      db.data.bookings = [];
-    }
+    const currentBookings = await db.readBookings();
+    db.data.bookings = Array.isArray(currentBookings) ? currentBookings : [];
 
     const newBooking = {
       id: 'BK' + Date.now().toString(36).toUpperCase(),
@@ -108,7 +107,20 @@ export const putHandler = async (req: Request, res: Response) => {
     const validationError = validateBookingPayload(payload, true);
     if (validationError) return res.status(400).json({ error: validationError });
 
-    const index = (db.data.bookings || []).findIndex((booking: any) => booking.id === id);
+    let currentBookings = await db.readBookings();
+    if (!currentBookings && db.data?.bookings) {
+      currentBookings = db.data.bookings;
+    }
+    db.data.bookings = Array.isArray(currentBookings) ? currentBookings : [];
+
+    let index = (db.data.bookings || []).findIndex((booking: any) => booking.id === id);
+    if (index < 0) {
+      const retriedBookings = await db.readBookings();
+      if (Array.isArray(retriedBookings)) {
+        db.data.bookings = retriedBookings;
+        index = db.data.bookings.findIndex((booking: any) => booking.id === id);
+      }
+    }
     if (index < 0) return res.status(404).json({ error: 'Booking not found' });
 
     const existing = db.data.bookings[index];
@@ -139,6 +151,8 @@ export const deleteHandler = async (req: Request, res: Response) => {
     if (!id) return res.status(400).json({ error: 'Booking id is required' });
     const db = await getDatabase(req.env);
     if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
+    const currentBookings = await db.readBookings();
+    db.data.bookings = Array.isArray(currentBookings) ? currentBookings : [];
     const before = (db.data.bookings || []).length;
     db.data.bookings = (db.data.bookings || []).filter((booking: any) => booking.id !== id);
     if (db.data.bookings.length === before) return res.status(404).json({ error: 'Booking not found' });

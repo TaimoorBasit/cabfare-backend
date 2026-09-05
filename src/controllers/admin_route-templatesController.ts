@@ -65,7 +65,7 @@ export const postHandler = async (req: Request, res: Response) => {
   const template = normalizedTemplate(item);
   db.data.routeTemplates.push(template);
   addActivity(db, 'pricing', `Created route template ${template.id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ routeTemplates: db.data.routeTemplates, activityLog: db.data.activityLog });
   return res.status(201).json(template);
 };
 
@@ -81,7 +81,7 @@ export const putHandler = async (req: Request, res: Response) => {
   const template = normalizedTemplate(item);
   db.data.routeTemplates[index] = template;
   addActivity(db, 'pricing', `Updated route template ${template.id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ routeTemplates: db.data.routeTemplates, activityLog: db.data.activityLog });
   return res.json(template);
 };
 
@@ -94,6 +94,6 @@ export const deleteHandler = async (req: Request, res: Response) => {
   db.data.routeTemplates = db.data.routeTemplates.filter(template => template.id !== id);
   if (db.data.routeTemplates.length === before) return res.status(404).json({ error: 'Route template not found' });
   addActivity(db, 'pricing', `Deleted route template ${id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ routeTemplates: db.data.routeTemplates, activityLog: db.data.activityLog });
   return res.json({ success: true });
 };

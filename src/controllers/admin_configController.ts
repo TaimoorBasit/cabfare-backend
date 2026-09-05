@@ -1,4 +1,4 @@
-﻿type Request = any; type Response = any; type NextFunction = any;
+type Request = any; type Response = any; type NextFunction = any;
 import { addActivity, DB, getDatabase } from '../database/db';
 import { fleetEconomics } from '../engines/pricingEngine';
 
@@ -124,7 +124,7 @@ function buildConfigChangeLog(before: any, after: any) {
         if (ib === undefined) continue;
         if (typeof ib === 'object' || typeof ia === 'object') continue;
         if (JSON.stringify(ib) === JSON.stringify(ia)) continue;
-        changes.push({ field: humanizeKey(innerKey), before: ib, after: ia });
+      changes.push({ field: humanizeKey(innerKey), before: ib, after: ia });
       }
     }
   }
@@ -144,18 +144,8 @@ export const getHandler = async (req: Request, res: Response) => {
 }
 
 export const postHandler = async (req: Request, res: Response) => {
-  if (req.body?.vehicleFareMethod && req.env?.CABFARE_D1 && typeof req.env.CABFARE_D1.prepare === 'function') {
-    const id = String(req.body.vehicleFareMethod.id || '');
-    const method = req.body.vehicleFareMethod.fareCalculationMethod;
-    if (!['commercial', 'cost-plus'].includes(method)) return res.status(400).json({ error: 'Fare calculation method must be commercial or cost-plus' });
-    const db = new DB(req.env);
-    const updated = await db.updateVehicleFareMethod(id, method);
-    if (!updated) return res.status(404).json({ error: 'Vehicle not found' });
-    return res.json({ success: true, vehicle: { id, fareCalculationMethod: method } });
-  }
   const db = await getDatabase(req.env);
   if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
-  await db.read();
   const config = req.body;
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
      return res.status(400).json({ error: 'Configuration payload must be an object' });
@@ -167,12 +157,11 @@ export const postHandler = async (req: Request, res: Response) => {
     if (!['commercial', 'cost-plus'].includes(fareCalculationMethod)) {
       return res.status(400).json({ error: 'Fare calculation method must be commercial or cost-plus' });
     }
-    await db.read();
     const vehicle = db.data?.vehicles?.find((item: any) => item.id === id);
     if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
     vehicle.fareCalculationMethod = fareCalculationMethod;
     addActivity(db, 'configuration', `Updated ${vehicle.name} fare calculation method`, req.adminUser);
-    await db.write();
+    await db.writeSections({ vehicles: db.data.vehicles, activityLog: db.data.activityLog });
     return res.json({ success: true, vehicle: { id, fareCalculationMethod } });
   }
 
@@ -409,9 +398,19 @@ export const postHandler = async (req: Request, res: Response) => {
       surcharges: db.data.surcharges, vehicles: db.data.vehicles,
       annualOverheads: db.data.annualOverheads, blockedDates: db.data.blockedDates
     };
+    const changedSections: any = {};
+    if (config.vehicles) changedSections.vehicles = db.data.vehicles;
+    if (config.globalVars) changedSections.globalVars = db.data.globalVars;
+    if (config.surcharges) changedSections.surcharges = db.data.surcharges;
+    if (config.annualOverheads) changedSections.annualOverheads = db.data.annualOverheads;
+    if (config.blockedDates) changedSections.blockedDates = db.data.blockedDates;
+    if (config.operatorDetails) changedSections.operatorDetails = db.data.operatorDetails;
+
     addActivity(db, 'configuration', 'Updated admin configuration', req.adminUser,
       buildConfigChangeLog(beforeConfig, afterConfig));
-    await db.write();
+    if (db.data.activityLog) changedSections.activityLog = db.data.activityLog;
+
+    await db.writeSections(changedSections);
   }
   return res.json({ success: true });
 }

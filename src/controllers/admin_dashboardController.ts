@@ -394,6 +394,10 @@ export const getHandler = async (req: Request, res: Response) => {
   try {
     const db = await getDatabase(req.env);
     if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
+    if (!Array.isArray(db.data.bookings) || db.data.bookings.length === 0) {
+      const bookings = await db.readBookings();
+      if (Array.isArray(bookings)) db.data.bookings = bookings;
+    }
     return res.json(buildDashboardMetrics(db.data));
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Unable to load dashboard metrics' });

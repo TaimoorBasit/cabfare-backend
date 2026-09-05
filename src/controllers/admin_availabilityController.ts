@@ -21,12 +21,14 @@ export const getHandler = async (req: Request, res: Response) => {
 export const postHandler = async (req: Request, res: Response) => {
   const db = await getDatabase(req.env);
   if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
-  const item = { ...req.body, id: `block_${Date.now()}`, units: Number(req.body?.units ?? 1) };
+  const from = req.body?.from || req.body?.startDate;
+  const to = req.body?.to || req.body?.endDate;
+  const item = { ...req.body, id: `block_${Date.now()}`, units: Number(req.body?.units ?? 1), from, to };
   const error = validateBlock(item, new Set((db.data.vehicles || []).map(vehicle => vehicle.id)));
   if (error) return res.status(400).json({ error });
   db.data.vehicleAvailability.push(item);
   addActivity(db, 'availability', `Created availability block ${item.id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ vehicleAvailability: db.data.vehicleAvailability, activityLog: db.data.activityLog });
   return res.status(201).json(item);
 };
 
@@ -39,6 +41,6 @@ export const deleteHandler = async (req: Request, res: Response) => {
   db.data.vehicleAvailability = db.data.vehicleAvailability.filter(block => block.id !== id);
   if (db.data.vehicleAvailability.length === before) return res.status(404).json({ error: 'Availability block not found' });
   addActivity(db, 'availability', `Deleted availability block ${id}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ vehicleAvailability: db.data.vehicleAvailability, activityLog: db.data.activityLog });
   return res.json({ success: true });
 };

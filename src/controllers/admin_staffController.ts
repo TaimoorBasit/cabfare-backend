@@ -28,7 +28,7 @@ const accessLink = (baseUrl: string, token: string, mode: 'invite' | 'reset') =>
 
 export const getHandler = async (req: Request, res: Response) => {
   const db = await getDatabase(req.env);
-  const activities = db.data?.activityLog || [];
+  const activities = (db.data?.activityLog || []).slice(0, 50);
   return res.json({ staff: (db.data?.users || []).map(user => publicUser(user, activities)), permissions: ALL_PERMISSIONS });
 };
 
@@ -46,7 +46,7 @@ export const inviteHandler = async (req: Request, res: Response) => {
     Object.assign(existing, { name, role, permissions });
     const invitation = issueAccessToken(existing, 'invite');
     addActivity(db, 'staff', `Resent invitation to ${name}`, req.adminUser);
-    await db.write();
+    await db.writeSections({ users: db.data.users, activityLog: db.data.activityLog });
     return res.json({ staff: publicUser(existing, db.data.activityLog || []), link: accessLink(req.body.baseUrl, invitation.token, 'invite'), expiresAt: invitation.expiresAt });
   }
   const user: User = {
@@ -56,7 +56,7 @@ export const inviteHandler = async (req: Request, res: Response) => {
   const invitation = issueAccessToken(user, 'invite');
   db.data.users.push(user);
   addActivity(db, 'staff', `Invited ${name} as ${role}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ users: db.data.users, activityLog: db.data.activityLog });
   return res.status(201).json({ staff: publicUser(user, []), link: accessLink(req.body.baseUrl, invitation.token, 'invite'), expiresAt: invitation.expiresAt });
 };
 
@@ -73,7 +73,7 @@ export const putHandler = async (req: Request, res: Response) => {
   if (['active', 'suspended'].includes(req.body.status)) user.status = req.body.status;
   const after = { role: user.role, status: user.status, permissions: permissionsFor(user) };
   addActivity(db, 'staff', `Updated access for ${user.name}`, req.adminUser, [{ field: 'access', before, after }]);
-  await db.write();
+  await db.writeSections({ users: db.data.users, activityLog: db.data.activityLog });
   return res.json({ staff: publicUser(user, db.data.activityLog || []) });
 };
 
@@ -83,7 +83,7 @@ export const resendHandler = async (req: Request, res: Response) => {
   if (!db.data || !user || user.status !== 'invited') return res.status(404).json({ error: 'Pending invitation not found' });
   const invitation = issueAccessToken(user, 'invite');
   addActivity(db, 'staff', `Resent invitation to ${user.name}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ users: db.data.users, activityLog: db.data.activityLog });
   return res.json({ link: accessLink(req.body.baseUrl, invitation.token, 'invite'), expiresAt: invitation.expiresAt, staff: publicUser(user, db.data.activityLog || []) });
 };
 
@@ -93,7 +93,7 @@ export const resetHandler = async (req: Request, res: Response) => {
   if (!db.data || !user || user.status !== 'active') return res.status(404).json({ error: 'Active staff member not found' });
   const reset = issueAccessToken(user, 'reset');
   addActivity(db, 'staff', `Sent a password reset to ${user.name}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ users: db.data.users, activityLog: db.data.activityLog });
   return res.json({ link: accessLink(req.body.baseUrl, reset.token, 'reset'), expiresAt: reset.expiresAt, staff: publicUser(user, db.data.activityLog || []) });
 };
 
@@ -105,6 +105,6 @@ export const deleteHandler = async (req: Request, res: Response) => {
   if (user.role === 'owner') return res.status(400).json({ error: 'The owner account cannot be removed' });
   db.data.users.splice(index, 1);
   addActivity(db, 'staff', `Removed ${user.name}`, req.adminUser);
-  await db.write();
+  await db.writeSections({ users: db.data.users, activityLog: db.data.activityLog });
   return res.json({ success: true });
 };
