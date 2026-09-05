@@ -36,8 +36,8 @@ export async function generateQuotes(journey: any, env: any) {
     throw new QuoteValidationError("Journey type must be one-way or return");
   }
   const passengers = Number(journey.passengers);
-  if (!Number.isInteger(passengers) || passengers < 1 || passengers > 500) {
-    throw new QuoteValidationError("Passengers must be a whole number between 1 and 500");
+  if (!Number.isInteger(passengers) || passengers < 1) {
+    throw new QuoteValidationError("Passengers must be a whole number of at least 1");
   }
   const departure = new Date(journey.departureDate);
   if (Number.isNaN(departure.getTime())) {
@@ -71,14 +71,12 @@ export async function generateQuotes(journey: any, env: any) {
 
     const mileageResult = await calculateMileage({
       ...journey,
-      emptyLegThresholdKm: Number(vehicle.pricingSettings?.emptyLegThresholdKm ?? 20)
+      emptyLegThresholdKm: Number(vehicle.pricingSettings?.emptyLegThresholdKm)
     }, env);
-    const usesM6Toll = (mileageResult.legs || []).some((leg: any) =>
-      (leg.steps || []).some((step: any) => /m6\s*toll/i.test(String(step.html_instructions || '')))
-    );
     const totalWaitingMinutes = (Number(mileageResult.automaticWaitingMinutes) || 0) + calculateTotalWaitingMinutes(journey);
 
-    const usableCapacity = /premium coach/i.test(String(vehicle.name || '')) ? 50 : (vehicle.capacity || 1);
+    const usableCapacity = Number(vehicle.capacity);
+    if (!Number.isFinite(usableCapacity) || usableCapacity < 1) throw new QuoteValidationError(`Vehicle ${vehicle.name || vehicle.id} capacity is missing or invalid`);
     const requiredVehicles = Math.max(1, Math.ceil(passengers / usableCapacity));
     const paxPerVehicle = Math.ceil(passengers / requiredVehicles);
     const suitcasesPerVehicle = Math.ceil((journey.suitcaseCount || 0) / requiredVehicles);
@@ -103,7 +101,6 @@ export async function generateQuotes(journey: any, env: any) {
       departureDate: journey.departureDate,
       returnDate: journey.returnDate,
       journeyClass: mileageResult.journeyClass,
-      usesM6Toll
     }, env);
 
     
@@ -122,9 +119,9 @@ export async function generateQuotes(journey: any, env: any) {
         vehicleCount: requiredVehicles,
         totalSeatCapacity: usableCapacity * requiredVehicles,
         finalPrice: pricingResult.finalFare * requiredVehicles,
-        vatPct: Number(data.globalVars?.vatPct ?? 20),
-        vatAmount: pricingResult.finalFare * requiredVehicles * Number(data.globalVars?.vatPct ?? 20) / 100,
-        customerTotal: pricingResult.finalFare * requiredVehicles * (1 + Number(data.globalVars?.vatPct ?? 20) / 100),
+        vatPct: Number(data.globalVars?.vatPct),
+        vatAmount: pricingResult.finalFare * requiredVehicles * Number(data.globalVars?.vatPct) / 100,
+        customerTotal: pricingResult.finalFare * requiredVehicles * (1 + Number(data.globalVars?.vatPct) / 100),
         upperBoundPrice: Math.max(pricingResult.finalFare, pricingResult.upperBoundFare || pricingResult.finalFare) * requiredVehicles,
         subtotal: (pricingResult.baseFare + pricingResult.extraLiveMileageCharge + pricingResult.extraDeadMileageCharge + pricingResult.waitingCharge) * requiredVehicles,
         surchargeLines: pricingResult.surchargeLines.map(s => ({...s, cost: s.cost * requiredVehicles})),

@@ -229,7 +229,7 @@ test('cost-model pricing separates the customer fare from operating cost', () =>
   assert.equal(result.baseFare, 123);
   assert.equal(result.driverCost, 30);
   assert.equal(result.finalFare, 125);
-  assert.equal(result.upperBoundFare, 140);
+  assert.equal(result.upperBoundFare, 138);
   assert.equal(result.breakdown.distanceCost, 54);
   assert.equal(result.breakdown.atomicMileageCost, 54);
   assert.equal(result.breakdown.totalOperatingCost, 87.33);
@@ -278,18 +278,6 @@ test('holiday driver cost cannot reduce the calibrated customer fare', () => {
 
   assert.equal(result.driverCost, 44);
   assert.equal(result.finalFare, 125);
-});
-
-test('an M6 Toll charge is included only when the routed journey uses it', () => {
-  const withoutToll = calculatePriceFromData(makePricingInput(), makePricingData());
-  const withToll = calculatePriceFromData(makePricingInput({ usesM6Toll: true }), makePricingData());
-
-  assert.equal(withoutToll.surchargeLines.some((line: any) => /M6 Toll/.test(line.label)), false);
-  assert.deepEqual(
-    withToll.surchargeLines.find((line: any) => /M6 Toll/.test(line.label)),
-    { label: 'M6 Toll (PSV)', cost: 6.5 }
-  );
-  assert.equal(withToll.finalFare, 130);
 });
 
 test('multi-day pricing follows the supplied zero standing and overnight policy', () => {
@@ -426,12 +414,6 @@ test('manual pricing rejects missing business configuration instead of using hid
       },
       expected: /driver hourly wage/
     },
-    {
-      name: 'M6 Toll',
-      mutate: data => { delete data.surcharges.m6Toll; },
-      input: { usesM6Toll: true },
-      expected: /M6 Toll surcharge/
-    }
   ];
 
   for (const scenario of cases) {

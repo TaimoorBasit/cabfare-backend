@@ -19,7 +19,6 @@ interface PricingInput {
   departureDate: string;
   returnDate?: string;
   journeyClass?: 'ONE_WAY' | 'SAME_DAY_RETURN' | 'MULTI_DAY_RETURN' | 'SPLIT_RETURN';
-  usesM6Toll?: boolean;
 }
 
 export class PricingConfigurationError extends Error {
@@ -41,9 +40,6 @@ function configuredNumber(label: string, values: unknown[], options: { positive?
   return value;
 }
 
-function roundToNearestFive(value: number) {
-  return Math.round(value / 5) * 5;
-}
 
 // Mirrors the lifecycle calculation shown in Admin. Missing Admin values must
 // fail clearly instead of silently introducing a Backend-only cost.
@@ -419,11 +415,6 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
     surchargeTotal += cost;
     if (cost > 0) surchargeLines.push({ label: "Dartford Crossing", cost });
   }
-  if (input.usesM6Toll) {
-    const cost = configuredNumber('M6 Toll surcharge', [surcharges.m6Toll]);
-    surchargeTotal += cost;
-    if (cost > 0) surchargeLines.push({ label: "M6 Toll (PSV)", cost });
-  }
 
 
   let finalFare = preSurchargeBase + surchargeTotal;
@@ -500,7 +491,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
     const roundedFinalFare = Math.ceil(finalFare / 5) * 5;
     const customerRangeEnabled = gv.customerRangeUpliftEnabled !== false;
     const customerRangePct = customerRangeEnabled ? configuredNumber('customer price range percentage', [gv.customerRangePct]) : 0;
-    const upperBoundFare = customerRangeEnabled ? roundToNearestFive(finalFare * (1 + customerRangePct / 100)) : roundedFinalFare;
+    const upperBoundFare = customerRangeEnabled ? finalFare * (1 + customerRangePct / 100) : roundedFinalFare;
 
     return {
       baseFare: Math.round(baseFare),
