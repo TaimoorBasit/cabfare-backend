@@ -6,6 +6,7 @@ import seedData from './seed.json';
 // Kept relative so Cloudflare can validate the Worker bundle. This path is
 // touched only by the local-file fallback; production uses CABFARE_DB KV.
 const localDatabasePath = '.data/db.json';
+const D1_STATE_TIMEOUT_MS = 30_000;
 
 export interface User {
   id: string;
@@ -253,7 +254,7 @@ class KVAdapter {
       if (d1) {
         const row = await Promise.race([
           d1.prepare('SELECT state FROM database_state WHERE id = 1').first(),
-          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 read timed out')), 5000))
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 read timed out')), D1_STATE_TIMEOUT_MS))
         ]);
         if (row?.state) return JSON.parse(String(row.state)) as DatabaseSchema;
         return null;
@@ -323,7 +324,7 @@ class KVAdapter {
       if (d1) {
         await Promise.race([
           d1.prepare('INSERT INTO database_state (id, state, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at').bind(JSON.stringify(data), new Date().toISOString()).run(),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('D1 write timed out')), 5000))
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('D1 write timed out')), D1_STATE_TIMEOUT_MS))
         ]);
         return;
       }
