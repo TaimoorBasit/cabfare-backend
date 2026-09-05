@@ -2,6 +2,7 @@ import { calculateMileage } from './mileageEngine';
 import { calculatePrice } from './pricingEngine';
 import { checkAvailability } from './availabilityEngine';
 import { getDatabase } from '../database/db';
+import { MILES_TO_KM } from '../utils/units';
 
 export class QuoteValidationError extends Error {}
 
@@ -114,11 +115,11 @@ export async function generateQuotes(journey: any, env: any) {
       vehicle: usableCapacity === vehicle.capacity ? vehicle : { ...vehicle, capacity: usableCapacity },
       result: {
         distanceUnit: data.globalVars?.distanceUnit,
-        totalKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.totalKm / 1.60934 : mileageResult.totalKm),
-        revenueKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.liveKm / 1.60934 : mileageResult.liveKm),
+        totalKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.totalKm / MILES_TO_KM : mileageResult.totalKm),
+        revenueKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.liveKm / MILES_TO_KM : mileageResult.liveKm),
         chargedKm: Math.round(mileageResult.totalKm),
         customerKm: Math.round(mileageResult.liveKm),
-        deadKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.deadKm / 1.60934 : mileageResult.deadKm),
+        deadKm: Math.round(data.globalVars?.distanceUnit === 'miles' ? mileageResult.deadKm / MILES_TO_KM : mileageResult.deadKm),
         journeyClass: mileageResult.journeyClass,
         emptyLegApplied: mileageResult.emptyLegApplied,
         vehicleCount: requiredVehicles,

@@ -135,6 +135,7 @@ export interface DatabaseSchema {
     yardLat?: number;
     yardLng?: number;
     distanceUnit?: 'km' | 'miles';
+    fuelUnit?: 'litres' | 'gallons';
     fuelPricePerLitre?: number;
     driverHourlyWage?: number;
     holidayPayPct?: number;

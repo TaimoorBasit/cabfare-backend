@@ -34,6 +34,9 @@ function invalidNumericFields(record: any, fields: string[]) {
 
 function validateVehicle(vehicle: any): string | null {
   if (!vehicle?.id || !String(vehicle.name || '').trim()) return 'Every vehicle requires an id and name';
+  if (vehicle.fareCalculationMethod !== undefined && !['commercial', 'cost-plus'].includes(vehicle.fareCalculationMethod)) {
+    return `${vehicle.name}: fareCalculationMethod must be commercial or cost-plus`;
+  }
   for (const field of positiveVehicleFields) {
     if (vehicle[field] !== undefined && (!Number.isFinite(Number(vehicle[field])) || Number(vehicle[field]) <= 0)) {
       return `${vehicle.name}: ${field} must be greater than zero`;
@@ -157,6 +160,14 @@ export const postHandler = async (req: Request, res: Response) => {
     if (!['commercial', 'cost-plus'].includes(fareCalculationMethod)) {
       return res.status(400).json({ error: 'Fare calculation method must be commercial or cost-plus' });
     }
+    if (id === 'all') {
+      for (const vehicle of db.data?.vehicles || []) {
+        vehicle.fareCalculationMethod = fareCalculationMethod;
+      }
+      addActivity(db, 'configuration', `Updated all vehicles fare calculation method to ${fareCalculationMethod}`, req.adminUser);
+      await db.writeSections({ vehicles: db.data.vehicles, activityLog: db.data.activityLog });
+      return res.json({ success: true, vehicle: { id: 'all', fareCalculationMethod } });
+    }
     const vehicle = db.data?.vehicles?.find((item: any) => item.id === id);
     if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
     vehicle.fareCalculationMethod = fareCalculationMethod;
@@ -170,6 +181,10 @@ export const postHandler = async (req: Request, res: Response) => {
     config.vehicles = config.vehicles.map((v: any) => {
       if (!v || typeof v !== 'object') return v;
       const dbVehicle = db.data?.vehicles?.find((x: any) => x.id === v.id) || {};
+
+      v.fareCalculationMethod = ['commercial', 'cost-plus'].includes(v.fareCalculationMethod)
+        ? v.fareCalculationMethod
+        : ((dbVehicle as any).fareCalculationMethod || 'commercial');
 
       // Positive fields must be finite and > 0
       for (const field of positiveVehicleFields) {
@@ -248,6 +263,9 @@ export const postHandler = async (req: Request, res: Response) => {
     if (config.globalVars.distanceUnit !== undefined && !['km', 'miles'].includes(config.globalVars.distanceUnit)) {
       config.globalVars.distanceUnit = (dbGv as any).distanceUnit || 'miles';
     }
+    if (config.globalVars.fuelUnit !== undefined && !['litres', 'gallons'].includes(config.globalVars.fuelUnit)) {
+      config.globalVars.fuelUnit = (dbGv as any).fuelUnit || 'litres';
+    }
     if (config.globalVars.yardLat !== undefined) {
       const lat = Number(config.globalVars.yardLat);
       if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
@@ -315,6 +333,9 @@ export const postHandler = async (req: Request, res: Response) => {
   }
   if (config.globalVars?.distanceUnit !== undefined && !['km', 'miles'].includes(config.globalVars.distanceUnit)) {
      return res.status(400).json({ error: 'Distance unit must be km or miles' });
+  }
+  if (config.globalVars?.fuelUnit !== undefined && !['litres', 'gallons'].includes(config.globalVars.fuelUnit)) {
+     return res.status(400).json({ error: 'Fuel unit must be litres or gallons' });
   }
   if (config.globalVars?.yardLat !== undefined && (Number(config.globalVars.yardLat) < -90 || Number(config.globalVars.yardLat) > 90)) {
      return res.status(400).json({ error: 'Yard latitude must be between -90 and 90' });

@@ -260,6 +260,45 @@ test('cost-plus vehicle pricing uses the profit floor instead of selling rate', 
   assert.equal(result.finalFare, Math.ceil(result.breakdown.profitFloor / 5) * 5);
 });
 
+test('cost-plus vehicle pricing ignores route templates and pricing matrices', () => {
+  const data = makePricingData();
+  data.vehicles[0].fareCalculationMethod = 'cost-plus';
+  data.routeTemplates.push({
+    id: 'template-should-be-ignored',
+    pickupArea: 'Alpha Terminal',
+    dropArea: 'Beta Terminal',
+    vehicleId: 'minibus',
+    tripType: 'one-way',
+    price: 999,
+    waitingChargePerHour: 0,
+    radiusKm: 15
+  });
+  data.pricingMatrix.push({
+    id: 'matrix-should-be-ignored',
+    pickupArea: 'Any',
+    dropArea: 'Any',
+    vehicleId: 'minibus',
+    tripType: 'one-way',
+    baseFare: 888,
+    includedLiveMileage: 999,
+    includedDeadMileage: 999,
+    waitingChargePerHour: 0,
+    extraMileageRate: 5,
+    distanceBands: [{ min: 0, max: null, rate: 5 }],
+    nightRateMultiplier: 1,
+    weekendRateMultiplier: 1,
+    status: 'active',
+    scope: 'global'
+  });
+
+  const result = calculatePriceFromData(makePricingInput(), data);
+
+  assert.equal(result.baseFare, 0);
+  assert.equal(result.pricingMethod, 'cost-model');
+  assert.equal(result.breakdown.fareCalculationMethod, 'cost-plus');
+  assert.equal(result.finalFare, Math.ceil(result.breakdown.profitFloor / 5) * 5);
+});
+
 test('holiday driver cost cannot reduce the calibrated customer fare', () => {
   const data = makePricingData();
   data.seasonalPricing.push({
@@ -504,4 +543,28 @@ test('matrix pricing rejects missing bands and distance gaps instead of inventin
     () => calculatePriceFromData(makePricingInput(), dataWithGap),
     /has no band for 120 km/
   );
+});
+
+test('standard bus excludes vehicle overheads from quotation operating cost and minimum hire', () => {
+  const data = makePricingData();
+  data.vehicles.push({
+    id: 'bus',
+    name: 'Standard Bus',
+    capacity: 33,
+    fleetCount: 2,
+    utilisationDays: 200,
+    annualCosts: [{ id: 1, label: 'Insurance', cost: 6000 }],
+    fuelKpl: 7.2,
+    maintenanceCostPerKm: 0.12,
+    tyreSetCost: 2800,
+    expectedTyreLifeKm: 80000,
+    ratePerKm: 0.29,
+    fareCalculationMethod: 'cost-plus'
+  } as any);
+
+  const busQuote = calculatePriceFromData(makePricingInput({ vehicleId: 'bus' }), data);
+  assert.equal(busQuote.breakdown.allocatedStanding, 0);
+
+  const minibusQuote = calculatePriceFromData(makePricingInput({ vehicleId: 'minibus' }), data);
+  assert.ok(minibusQuote.breakdown.allocatedStanding > 0);
 });

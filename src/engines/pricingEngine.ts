@@ -172,6 +172,8 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
 
   const vehicle = data.vehicles.find((v: any) => v.id === vehicleId);
   if (!vehicle) throw new Error("Vehicle not found");
+  const isCostPlus = vehicle.fareCalculationMethod === 'cost-plus';
+  const isStandardBus = vehicleId === 'bus' || vehicle.id === 'bus' || String(vehicle.name || '').toLowerCase().includes('standard bus');
   const departureForRates = new Date(departureDate);
   const isWeekendDeparture =
     !Number.isNaN(departureForRates.getTime()) &&
@@ -188,7 +190,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
     throw new PricingConfigurationError('distance unit must be configured as km or miles');
   }
   const templateRadiusFactor = distanceUnit === 'miles' ? 1.60934 : 1;
-  const template = (Array.isArray(data.routeTemplates) ? data.routeTemplates : []).find((t: RouteTemplate) => 
+  const template = !isCostPlus && (Array.isArray(data.routeTemplates) ? data.routeTemplates : []).find((t: RouteTemplate) => 
     t.vehicleId === vehicleId && 
     t.tripType === journeyType &&
     matchLocation(originCoords, originName, t.pickupGeo, t.pickupArea, Number(t.radiusKm || 0) * templateRadiusFactor) &&
@@ -287,7 +289,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
     if (invalidScope) throw new PricingConfigurationError(`pricing matrix rule ${invalidScope.id || ''} has no valid scope`);
     const inferMatrixScope = (m: any) => m.scope;
     const scopePriority: Record<string, number> = { city: 3, fleet: 2, global: 1 };
-    const matrix = [...matrixRules]
+    const matrix = !isCostPlus && [...matrixRules]
       .sort((a: any, b: any) => scopePriority[inferMatrixScope(b)] - scopePriority[inferMatrixScope(a)])
       .find((m: any) => {
       const inferredScope = inferMatrixScope(m);
@@ -351,12 +353,12 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       // underpricing, so a config gap here should reduce quote quality, not
       // block the customer from getting a price at all.
       waitingCharge = waitingHours * configuredNumber('waiting charge per hour', [gv.waitingChargePerHour]);
-      const sellingRate = configuredNumber(
+      const sellingRate = isCostPlus ? 0 : configuredNumber(
         `${journeyType} selling rate`,
         [journeyType === 'return' ? vehicle.sellingRateReturn : vehicle.sellingRateOneWay],
         { positive: true }
       );
-      const includedKm = configuredNumber(
+      const includedKm = isCostPlus ? 0 : configuredNumber(
         `${journeyType} included mileage`,
         [journeyType === 'return' ? vehicle.includedKmReturn : vehicle.includedKmOneWay]
       );
@@ -368,15 +370,16 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
       // profit floor below still guarantees the customer is never quoted
       // below cost, so a missing minimum-hire figure should never be the
       // thing that blocks a customer from getting a price.
-      const liveMinHire = fleetEconomics(data).vehicleBreakdown.find((v: any) => v.id === vehicleId)?.minHirePerDay;
+      const liveMinHireEco = fleetEconomics(data).vehicleBreakdown.find((v: any) => v.id === vehicleId);
+      const liveMinHire = isStandardBus ? (Number(liveMinHireEco?.dailyOverhead) || 0) : (Number(liveMinHireEco?.minHirePerDay) || 0);
       // Fleet economics is authoritative; a previously stored manual value must
       // not survive an overhead, fleet-count, or utilisation change.
       const minimumHire = Number(liveMinHire) > 0 ? Number(liveMinHire) : 0;
-      commercialMinimumHire = minimumHire;
-      commercialSellingRate = sellingRate;
-      commercialIncludedKm = includedKm;
-      commercialMileageCharge = Math.max(0, totalKm - includedKm) * sellingRate;
-      baseFare = vehicle.fareCalculationMethod === 'cost-plus'
+      commercialMinimumHire = isCostPlus ? 0 : minimumHire;
+      commercialSellingRate = isCostPlus ? 0 : sellingRate;
+      commercialIncludedKm = isCostPlus ? 0 : includedKm;
+      commercialMileageCharge = isCostPlus ? 0 : Math.max(0, totalKm - includedKm) * sellingRate;
+      baseFare = isCostPlus
         ? 0
         : minimumHire + Math.max(0, totalKm - includedKm) * sellingRate;
       preSurchargeBase = baseFare + waitingCharge;
@@ -424,7 +427,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   if (isManualQuote) finalFare = preSurchargeBase + surchargeTotal;
 
   const commercialWeight = Number(vehicle.commercialWeight);
-  if (!isManualQuote && Number.isFinite(commercialWeight) && commercialWeight > 0) {
+  if (!isCostPlus && !isManualQuote && Number.isFinite(commercialWeight) && commercialWeight > 0) {
     finalFare *= commercialWeight;
   }
 
@@ -480,7 +483,8 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   }
 
   const vehicleEconomics = fleetEconomics(data).vehicleBreakdown.find((item: any) => item.id === vehicleId);
-  const allocatedStanding = (Number(vehicleEconomics?.dailyStanding) || 0) * operatingDays;
+  const rawStanding = isStandardBus ? 0 : (Number(vehicleEconomics?.dailyStanding) || 0);
+  const allocatedStanding = rawStanding * operatingDays;
   const allocatedOverhead = (Number(vehicleEconomics?.dailyOverhead) || 0) * operatingDays;
   if (!isManualQuote) standingCost = Math.round(allocatedStanding * 100) / 100;
   const totalOperatingCost = atomicMileageCost + driverCost + standingCost + overnightCost + (isManualQuote ? allocatedStanding : 0) + allocatedOverhead + surchargeTotal;
@@ -488,7 +492,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   if (netMarginPct >= 100) throw new PricingConfigurationError('net margin percentage must be less than 100');
   const netProfitTarget = configuredNumber('minimum net profit', [gv.netProfitTarget]);
   const profitFloor = Math.max(totalOperatingCost / (1 - netMarginPct / 100), totalOperatingCost + netProfitTarget);
-  finalFare = Math.max(finalFare, profitFloor);
+  finalFare = isCostPlus ? (profitFloor + waitingCharge) : Math.max(finalFare, profitFloor);
 
     const roundedFinalFare = Math.ceil(finalFare / 5) * 5;
     const customerRangeEnabled = gv.customerRangeUpliftEnabled !== false;
