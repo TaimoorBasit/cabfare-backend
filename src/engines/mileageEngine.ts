@@ -133,9 +133,9 @@ export async function calculateMileage(journey: any, env: any) {
     const divisor = 1000;
     const rawDeadOutDistanceMeters = sumLegs(deadOutDirections.routes[0].legs, 'distance');
     const rawDeadOutDurationSeconds = sumLegs(deadOutDirections.routes[0].legs, 'duration');
-    const includeDeadOut = rawDeadOutDistanceMeters / 1000 >= emptyLegThresholdKm;
-    const deadOutDistanceMeters = includeDeadOut ? rawDeadOutDistanceMeters : 0;
-    const deadOutDurationSeconds = includeDeadOut ? rawDeadOutDurationSeconds : 0;
+    const includeDeadOut = rawDeadOutDistanceMeters > 0;
+    const deadOutDistanceMeters = rawDeadOutDistanceMeters;
+    const deadOutDurationSeconds = rawDeadOutDurationSeconds;
     const automaticWaitingMinutes = journeyClass === 'SAME_DAY_RETURN'
       ? Math.max(0, (new Date(journey.returnDate).getTime() - (departure.getTime() + (deadOutDurationSeconds + liveDurationSeconds) * 1000)) / 60000)
       : 0;
@@ -158,7 +158,7 @@ export async function calculateMileage(journey: any, env: any) {
     let deadBackDurationSeconds = 0;
     {
       const rawDeadBackDistanceMeters = sumLegs(deadBackDirections.routes[0].legs, 'distance');
-      if (rawDeadBackDistanceMeters / 1000 >= emptyLegThresholdKm) {
+      if (rawDeadBackDistanceMeters > 0) {
         deadBackDistanceMeters = rawDeadBackDistanceMeters;
         deadBackDurationSeconds = sumLegs(deadBackDirections.routes[0].legs, 'duration');
       }
