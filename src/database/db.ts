@@ -321,7 +321,10 @@ class KVAdapter {
       if (!env) throw new Error("Environment configuration is missing");
       const d1 = env.CABFARE_D1 && typeof env.CABFARE_D1.prepare === 'function' ? env.CABFARE_D1 : null;
       if (d1) {
-        await d1.prepare('INSERT INTO database_state (id, state, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at').bind(JSON.stringify(data), new Date().toISOString()).run();
+        await Promise.race([
+          d1.prepare('INSERT INTO database_state (id, state, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at').bind(JSON.stringify(data), new Date().toISOString()).run(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('D1 write timed out')), 5000))
+        ]);
         return;
       }
       if (env.CABFARE_DB && typeof env.CABFARE_DB.put === 'function') {
@@ -375,15 +378,6 @@ export class DB {
   }
 
   async read() {
-    try {
-      await Promise.race([
-        this.writeQueue,
-        new Promise<void>((_, reject) => setTimeout(() => reject(new Error('writeQueue timeout')), 10000))
-      ]);
-    } catch (e) {
-      console.warn('Queue wait warning:', e);
-      this.writeQueue = Promise.resolve();
-    }
     this.data = await this.adapter.read(this.env);
     this.lastFetchTime = Date.now();
   }
