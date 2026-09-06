@@ -25,6 +25,25 @@ function calculateOperatingDays(departureDate: string, returnDate?: string) {
   return Math.max(1, Math.round((returnDay - departureDay) / 86400000) + 1);
 }
 
+export function matchesVehiclePreference(vehicle: any, preference?: string) {
+  if (!preference) return true;
+  const pref = String(preference).trim().toLowerCase();
+  const id = String(vehicle?.id || '').trim().toLowerCase();
+  const name = String(vehicle?.name || '').trim().toLowerCase();
+
+  if (id === pref || name === pref) return true;
+  if (pref === 'bus') {
+    return id === 'bus' || (/\bbus\b/i.test(name) && !/\bminibus\b/i.test(name));
+  }
+  if (pref === 'minibus') {
+    return id === 'minibus' || /\bminibus\b/i.test(name);
+  }
+  if (pref === 'coach') {
+    return id === 'coach' || /\bcoach\b/i.test(name);
+  }
+  return false;
+}
+
 export async function generateQuotes(journey: any, env: any) {
   const db = await getDatabase(env);
   const data = db.data;
@@ -54,12 +73,7 @@ export async function generateQuotes(journey: any, env: any) {
   const quotes = [];
 
   const requestedVehicles = journey.vehiclePreference
-    ? (data.vehicles as any[]).filter(vehicle => {
-        const preference = String(journey.vehiclePreference).toLowerCase();
-        const id = String(vehicle.id || '').toLowerCase();
-        const name = String(vehicle.name || '').toLowerCase();
-        return id === preference || name === preference || name.includes(preference);
-      })
+    ? (data.vehicles as any[]).filter(vehicle => matchesVehiclePreference(vehicle, journey.vehiclePreference))
     : data.vehicles as any[];
   const availableVehicles = (await Promise.all(requestedVehicles.map(async vehicle => ({
     vehicle,
