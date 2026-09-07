@@ -264,7 +264,7 @@ class KVAdapter {
         }
       }
       if (d1) {
-        // Read split storage from app_sections
+        // D1 sections are authoritative. Never recover an old snapshot on a read failure.
         try {
           const query = includeBookings
             ? 'SELECT section_key, data FROM app_sections'
@@ -277,32 +277,18 @@ class KVAdapter {
           if (Array.isArray(rows) && rows.length > 0) {
             const reconstructed: any = { bookings: [] };
             for (const row of rows) {
-              try {
-                reconstructed[row.section_key] = JSON.parse(String(row.data));
-              } catch {
-                reconstructed[row.section_key] = row.data;
-              }
+              reconstructed[row.section_key] = JSON.parse(String(row.data));
+            }
+            if (CONFIG_SECTION_KEYS.some(key => reconstructed[key] == null)) {
+              throw new Error('Saved configuration is incomplete; automatic defaults are disabled');
             }
             return reconstructed as DatabaseSchema;
           }
         } catch (splitError) {
-          console.warn('D1 app_sections read failed:', splitError);
+          throw splitError;
         }
 
-        // Only fall back to legacy database_state if app_sections has 0 rows
-        try {
-          const countRow = await d1.prepare('SELECT count(*) as cnt FROM app_sections').first().catch(() => null);
-          if (!countRow || Number(countRow.cnt) === 0) {
-            const row = await Promise.race([
-              d1.prepare('SELECT state FROM database_state WHERE id = 1').first(),
-              new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 read timed out')), 5000))
-            ]);
-            if (row?.state) return JSON.parse(String(row.state)) as DatabaseSchema;
-          }
-        } catch (fallbackError) {
-          console.warn('D1 database_state fallback read failed:', fallbackError);
-        }
-        return null;
+        throw new Error('Saved D1 sections are unavailable; automatic recovery is disabled');
       }
       const cloudflareKv = env.CABFARE_DB && typeof env.CABFARE_DB.get === 'function'
         ? env.CABFARE_DB
@@ -383,7 +369,8 @@ class KVAdapter {
       }
     }
     // Fallback: write via full write method
-    const full = await this.read(env) || createEmptyDatabase();
+    const full = await this.read(env, true);
+    if (!full) throw new Error('Cannot save without reading the current database');
     Object.assign(full, sections);
     await this.write(full, env);
   }
@@ -456,6 +443,7 @@ export class DB {
   adapter = new KVAdapter();
   env: any;
   lastFetchTime = 0;
+  private persistedData: DatabaseSchema | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(env: any) {
@@ -466,6 +454,7 @@ export class DB {
     const existingBookings = this.data?.bookings;
     const fresh = await this.adapter.read(this.env, includeBookings);
     if (fresh) {
+      this.persistedData = structuredClone(fresh);
       if (!includeBookings && Array.isArray(existingBookings) && existingBookings.length > 0) {
         fresh.bookings = existingBookings;
       }
@@ -491,7 +480,19 @@ export class DB {
     this.lastFetchTime = Date.now();
   }
 
-  async writeSections(sections: Partial<DatabaseSchema>) {
+  async writeSections(sections: Partial<DatabaseSchema>, checkConfiguration = false) {
+    if (checkConfiguration && this.env?.CABFARE_D1) {
+      const entries = Object.entries(sections).filter(([, value]) => value !== undefined);
+      const values = JSON.stringify(Object.fromEntries(entries.map(([key, value]) => [key, JSON.stringify(value)])));
+      const expected = JSON.stringify(Object.fromEntries(entries
+        .filter(([key]) => CONFIG_SECTION_KEYS.includes(key as keyof DatabaseSchema))
+        .map(([key]) => [key, JSON.stringify((this.persistedData as any)?.[key])])));
+      const result = await this.env.CABFARE_D1.prepare(
+        "UPDATE app_sections SET data = (SELECT value FROM json_each(?) WHERE key = section_key), updated_at = ? WHERE section_key IN (SELECT key FROM json_each(?)) AND NOT EXISTS (SELECT 1 FROM json_each(?) AS expected LEFT JOIN app_sections AS current ON current.section_key = expected.key WHERE current.data IS NULL OR json(current.data) != json(expected.value))"
+      ).bind(values, new Date().toISOString(), values, expected).run();
+      if (result.meta?.changes !== entries.length) throw new Error('Configuration changed during this save. Refresh before editing again.');
+      return;
+    }
     if (!this.data) {
       this.data = createEmptyDatabase();
     }
@@ -505,40 +506,15 @@ export class DB {
   }
 
   async readBookings(): Promise<any[] | null> {
-    if (this.data?.bookings && Array.isArray(this.data.bookings) && this.data.bookings.length > 0) {
-      if (Date.now() - this.lastFetchTime <= DATABASE_REFRESH_INTERVAL_MS) {
-        return this.data.bookings;
-      }
-    }
     if (this.env?.CABFARE_D1 && typeof this.env.CABFARE_D1.prepare === 'function') {
-      try {
-        const splitRow = await Promise.race([
-          this.env.CABFARE_D1.prepare("SELECT data FROM app_sections WHERE section_key = 'bookings'").first(),
-          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 bookings split read timed out')), D1_STATE_TIMEOUT_MS))
-        ]);
-        if (splitRow?.data) {
-          const parsed = JSON.parse(String(splitRow.data));
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch (splitError) {
-        console.warn('D1 app_sections bookings read unavailable; trying fallback:', splitError);
-      }
-      try {
-        const row = await Promise.race([
-          this.env.CABFARE_D1.prepare('SELECT state FROM database_state WHERE id = 1').first(),
-          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('D1 bookings read timed out')), D1_STATE_TIMEOUT_MS))
-        ]);
-        if (row?.state) {
-          const state = JSON.parse(String(row.state));
-          if (Array.isArray(state?.bookings) && state.bookings.length > 0) {
-            this.env.CABFARE_D1.prepare("INSERT INTO app_sections (section_key, data, updated_at) VALUES ('bookings', ?, datetime('now')) ON CONFLICT(section_key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at")
-              .bind(JSON.stringify(state.bookings)).run().catch(() => {});
-            return state.bookings;
-          }
-        }
-      } catch (error) {
-        console.warn('D1 bookings read unavailable; trying KV fallback:', error);
-      }
+      const row = await Promise.race([
+        this.env.CABFARE_D1.prepare("SELECT data FROM app_sections WHERE section_key = 'bookings'").first(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('D1 bookings read timed out')), D1_STATE_TIMEOUT_MS))
+      ]);
+      if (!row?.data) throw new Error('Saved bookings are unavailable; automatic recovery is disabled');
+      const bookings = JSON.parse(String(row.data));
+      if (!Array.isArray(bookings)) throw new Error('Saved bookings are invalid');
+      return bookings;
     }
     if (!this.env?.CABFARE_D1 && this.env?.CABFARE_DB && typeof this.env.CABFARE_DB.get === 'function') {
       try {
@@ -612,7 +588,16 @@ export class DB {
     return true;
   }
 
-  async writeBookings(bookings: any[]) {
+  async writeBookings(bookings: any[], expectedBookings?: any[]) {
+    if (this.env?.CABFARE_D1) {
+      if (!Array.isArray(expectedBookings)) throw new Error('A fresh bookings snapshot is required');
+      const result = await this.env.CABFARE_D1.prepare(
+        "UPDATE app_sections SET data = ?, updated_at = ? WHERE section_key = 'bookings' AND json(data) = json(?)"
+      ).bind(JSON.stringify(bookings), new Date().toISOString(), JSON.stringify(expectedBookings)).run();
+      if (result.meta?.changes !== 1) throw new Error('Bookings changed during this save. Please retry; no records were overwritten.');
+      if (this.data) this.data.bookings = structuredClone(bookings);
+      return;
+    }
     if (!this.data) {
       this.data = createEmptyDatabase();
     }
@@ -676,69 +661,20 @@ export function applySupervisorPricingMigration(data: DatabaseSchema) {
   return true;
 }
 
-let db: DB | null = null;
-let databaseInitPromise: Promise<DB> | null = null;
-const DATABASE_REFRESH_INTERVAL_MS = 5_000;
-
 export async function initDatabase(env: any): Promise<DB> {
-  if (db?.data) return db;
-  if (databaseInitPromise) return databaseInitPromise;
-
-  databaseInitPromise = (async () => {
-    db ||= new DB(env);
-    await db.read();
-    if (!db.data || Object.keys(db.data).length === 0) {
-      await db.read();
-    }
-
-    if (!db.data || Object.keys(db.data).length === 0) {
-      db.data = createEmptyDatabase();
-      applySupervisorPricingMigration(db.data);
-      await db.write();
-    } else {
-      const gvMigrated = applySupervisorPricingMigration(db.data);
-      const accessNormalized = normalizeAccessData(db.data);
-      const vehicleNormalized = normalizeVehicleCostAliases(db.data);
-      if (gvMigrated || accessNormalized || vehicleNormalized) {
-        const changed: Partial<DatabaseSchema> = {};
-        if (gvMigrated) {
-          changed.globalVars = db.data.globalVars;
-          changed.vehicles = db.data.vehicles;
-          changed.routeTemplates = db.data.routeTemplates;
-          changed.pricingMatrix = db.data.pricingMatrix;
-        }
-        if (accessNormalized) changed.users = db.data.users;
-        if (vehicleNormalized) changed.vehicles = db.data.vehicles;
-        await db.writeSections(changed).catch(() => {});
-      }
-    }
-
-    return db;
-  })();
-
-  try {
-    return await databaseInitPromise;
-  } finally {
-    databaseInitPromise = null;
+  const database = new DB(env);
+  await database.read();
+  if (!database.data || Object.keys(database.data).length === 0) {
+    throw new Error('Saved database is unavailable; automatic seeding is disabled');
   }
+  // Normalize compatibility aliases in memory only. Reads must never rewrite saved data.
+  normalizeAccessData(database.data);
+  normalizeVehicleCostAliases(database.data);
+  return database;
 }
 
 export async function getDatabase(env: any): Promise<DB> {
-  if (!db?.data) {
-    return initDatabase(env);
-  } else {
-    
-    db.env = env;
-    
-    
-    if (Date.now() - db.lastFetchTime > DATABASE_REFRESH_INTERVAL_MS) {
-      await db.read();
-      if (db.data && normalizeVehicleCostAliases(db.data)) {
-        await db.writeSections({ vehicles: db.data.vehicles }).catch(() => {});
-      }
-    }
-  }
-  return db!;
+  return initDatabase(env);
 }
 
 export function addActivity(db: DB, type: string, message: string, actor?: any, changes?: any[]) {

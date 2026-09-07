@@ -153,6 +153,13 @@ export const postHandler = async (req: Request, res: Response) => {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
      return res.status(400).json({ error: 'Configuration payload must be an object' });
   }
+  if (config.expectedConfig) {
+    for (const key of Object.keys(SECTION_LABELS)) {
+      if (config[key] !== undefined && JSON.stringify(config.expectedConfig[key]) !== JSON.stringify((db.data as any)[key])) {
+        return res.status(409).json({ error: 'This configuration was changed in another session. Refresh before editing again.' });
+      }
+    }
+  }
 
   if (config.vehicleFareMethod) {
     const id = String(config.vehicleFareMethod.id || '');
@@ -165,14 +172,14 @@ export const postHandler = async (req: Request, res: Response) => {
         vehicle.fareCalculationMethod = fareCalculationMethod;
       }
       addActivity(db, 'configuration', `Updated all vehicles fare calculation method to ${fareCalculationMethod}`, req.adminUser);
-      await db.writeSections({ vehicles: db.data.vehicles, activityLog: db.data.activityLog });
+      await db.writeSections({ vehicles: db.data.vehicles, activityLog: db.data.activityLog }, true);
       return res.json({ success: true, vehicle: { id: 'all', fareCalculationMethod } });
     }
     const vehicle = db.data?.vehicles?.find((item: any) => item.id === id);
     if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
     vehicle.fareCalculationMethod = fareCalculationMethod;
     addActivity(db, 'configuration', `Updated ${vehicle.name} fare calculation method`, req.adminUser);
-    await db.writeSections({ vehicles: db.data.vehicles, activityLog: db.data.activityLog });
+    await db.writeSections({ vehicles: db.data.vehicles, activityLog: db.data.activityLog }, true);
     return res.json({ success: true, vehicle: { id, fareCalculationMethod } });
   }
 
@@ -431,7 +438,7 @@ export const postHandler = async (req: Request, res: Response) => {
       buildConfigChangeLog(beforeConfig, afterConfig));
     if (db.data.activityLog) changedSections.activityLog = db.data.activityLog;
 
-    await db.writeSections(changedSections);
+    await db.writeSections(changedSections, true);
   }
-  return res.json({ success: true });
+  return res.json({ success: true, config: Object.fromEntries(Object.keys(SECTION_LABELS).map(key => [key, (db.data as any)[key]])) });
 }

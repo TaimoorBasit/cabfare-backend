@@ -51,15 +51,9 @@ export const getHandler = async (req: Request, res: Response) => {
   try {
     const db = await getDatabase(req.env);
     if (!db.data) throw new Error("Database not initialized");
-    let savedBookings: any[] | null = null;
-    try {
-      savedBookings = await db.readBookings();
-    } catch (indexError) {
-      console.error('Booking index read failed:', indexError);
-    }
-    if (savedBookings && Array.isArray(savedBookings)) {
-      db.data.bookings = savedBookings;
-    }
+    const savedBookings = await db.readBookings();
+    if (!Array.isArray(savedBookings)) throw new Error('Saved bookings are unavailable');
+    db.data.bookings = savedBookings;
     return res.json({ bookings: db.data.bookings || [] });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
@@ -77,6 +71,7 @@ export const postHandler = async (req: Request, res: Response) => {
     if (validationError) return res.status(400).json({ error: validationError });
 
     const currentBookings = await db.readBookings();
+    const expectedBookings = structuredClone(currentBookings);
     db.data.bookings = Array.isArray(currentBookings) ? currentBookings : [];
 
     const newBooking = {
@@ -89,7 +84,7 @@ export const postHandler = async (req: Request, res: Response) => {
 
     db.data.bookings.unshift(newBooking);
     addActivity(db, 'booking', `New booking ${newBooking.id} received`, req.adminUser);
-    await db.writeBookings(db.data.bookings);
+    await db.writeBookings(db.data.bookings, expectedBookings || undefined);
 
     return res.status(201).json({ success: true, booking: newBooking });
   } catch (error: any) {
@@ -123,6 +118,7 @@ export const putHandler = async (req: Request, res: Response) => {
     }
     if (index < 0) return res.status(404).json({ error: 'Booking not found' });
 
+    const expectedBookings = structuredClone(db.data.bookings);
     const existing = db.data.bookings[index];
     
     const updatedBooking = {
@@ -137,7 +133,7 @@ export const putHandler = async (req: Request, res: Response) => {
     };
     db.data.bookings[index] = updatedBooking;
     addActivity(db, 'booking', `Updated booking ${id}`, req.adminUser);
-    await db.writeBookings(db.data.bookings);
+    await db.writeBookings(db.data.bookings, expectedBookings);
 
     return res.json({ success: true, booking: updatedBooking });
   } catch (error: any) {
@@ -152,12 +148,13 @@ export const deleteHandler = async (req: Request, res: Response) => {
     const db = await getDatabase(req.env);
     if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
     const currentBookings = await db.readBookings();
+    const expectedBookings = structuredClone(currentBookings);
     db.data.bookings = Array.isArray(currentBookings) ? currentBookings : [];
     const before = (db.data.bookings || []).length;
     db.data.bookings = (db.data.bookings || []).filter((booking: any) => booking.id !== id);
     if (db.data.bookings.length === before) return res.status(404).json({ error: 'Booking not found' });
     addActivity(db, 'booking', `Deleted booking ${id}`, req.adminUser);
-    await db.writeBookings(db.data.bookings);
+    await db.writeBookings(db.data.bookings, expectedBookings || undefined);
     return res.json({ success: true });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Unable to delete booking' });

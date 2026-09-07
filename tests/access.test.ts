@@ -42,7 +42,7 @@ test('submitting an existing pending email resends its invitation instead of rej
     users: [], pricingMatrix: [], routeTemplates: [], seasonalPricing: [], mileageRules: [], bookings: [], quotes: [],
     waitingCharges: [], vehicleAvailability: [], routeCache: [], vehicles: [], globalVars: { pricingModelVersion: 'company-calculation-2026-08-2' }, activityLog: []
   };
-  const env = { CABFARE_DB: { get: async () => structuredClone(stored), put: async (_key: string, value: string) => { stored = JSON.parse(value); } } };
+  const env = { CABFARE_DB: { get: async (key: string) => key === 'cabfare_db' ? structuredClone(stored) : null, put: async (key: string, value: string) => { if (key === 'cabfare_db') stored = JSON.parse(value); } } };
   const responses: any[] = [];
   const res: any = { status(code: number) { responses.push({ code }); return this; }, json(payload: any) { responses.at(-1).payload = payload; return payload; } };
   const req: any = { env, adminUser: { id: 'owner', name: 'Owner' }, body: { name: 'New Staff', email: 'staff@example.com', role: 'quotes', baseUrl: 'https://admin.example.com' } };
