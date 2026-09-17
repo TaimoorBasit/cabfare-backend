@@ -70,7 +70,7 @@ export const postHandler = async (req: Request, res: Response) => {
     const validationError = validateBookingPayload(payload);
     if (validationError) return res.status(400).json({ error: validationError });
 
-    const currentBookings = await db.readBookings();
+    const currentBookings = await db.readBookings(false);
     const expectedBookings = structuredClone(currentBookings);
     db.data.bookings = Array.isArray(currentBookings) ? currentBookings : [];
 
@@ -102,7 +102,7 @@ export const putHandler = async (req: Request, res: Response) => {
     const validationError = validateBookingPayload(payload, true);
     if (validationError) return res.status(400).json({ error: validationError });
 
-    let currentBookings = await db.readBookings();
+    let currentBookings = await db.readBookings(false);
     if (!currentBookings && db.data?.bookings) {
       currentBookings = db.data.bookings;
     }
@@ -110,7 +110,7 @@ export const putHandler = async (req: Request, res: Response) => {
 
     let index = (db.data.bookings || []).findIndex((booking: any) => booking.id === id);
     if (index < 0) {
-      const retriedBookings = await db.readBookings();
+      const retriedBookings = await db.readBookings(false);
       if (Array.isArray(retriedBookings)) {
         db.data.bookings = retriedBookings;
         index = db.data.bookings.findIndex((booking: any) => booking.id === id);
@@ -147,7 +147,7 @@ export const deleteHandler = async (req: Request, res: Response) => {
     if (!id) return res.status(400).json({ error: 'Booking id is required' });
     const db = await getDatabase(req.env);
     if (!db.data) return res.status(503).json({ error: 'Database not initialized' });
-    const currentBookings = await db.readBookings();
+    const currentBookings = await db.readBookings(false);
     const expectedBookings = structuredClone(currentBookings);
     db.data.bookings = Array.isArray(currentBookings) ? currentBookings : [];
     const before = (db.data.bookings || []).length;
