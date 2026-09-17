@@ -273,7 +273,7 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   const workingHours = drivingHours + waitingHours;
   const dailyWorkingHours = workingHours / operatingDays;
   mandatoryBreakHours = drivingBreakHours;
-  driverCost = ((drivingHours + mandatoryBreakHours) * driverWage + waitingHours * driverWage * waitingFactor) * driverCount;
+  driverCost = (drivingHours + mandatoryBreakHours) * driverWage + waitingHours * driverWage * waitingFactor;
 
   if (template) {
     baseFare = configuredNumber('route template price', [template.price]);
