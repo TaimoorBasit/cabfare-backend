@@ -259,10 +259,9 @@ export function calculatePriceFromData(input: PricingInput, data: any) {
   // A zero factor is valid when waiting time should not add wage cost.
   const waitingFactor = configuredNumber('waiting wage factor', [gv.waitingWageFactor]);
   const dailyDrivingHours = drivingHours / operatingDays;
-  const dailyDrivingLimitEnabled = gv.dailyDrivingLimitEnabled !== false;
-  const dailyDrivingLimit = dailyDrivingLimitEnabled ? configuredNumber('daily driving limit', [gv.dualDriverThresholdHours], { positive: true }) : 0;
-  const driverCount = dailyDrivingLimitEnabled ? Math.max(1, Math.ceil(dailyDrivingHours / dailyDrivingLimit)) : 1;
-  dualCrew = driverCount > 1;
+  const dailyDrivingLimit = 0;
+  const driverCount = 1;
+  dualCrew = false;
   // These values mirror the two visible Admin pricing controls. Preserve any
   // existing disabled policy without requiring a hidden flag to price quotes.
   const breakTriggerEnabled = gv.drivingBreakTriggerEnabled === true;
